@@ -306,7 +306,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-with open('/Users/thomasjouve/Documents/Python/styles.css') as f:
+with open('/Users/thomasjouve/EQD_Dashboard_Project/styles.css') as f:
     st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
 # with open('styles.css') as f:
