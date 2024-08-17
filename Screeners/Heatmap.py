@@ -79,7 +79,9 @@ def create_custom_grid(returns, company_names):
 
 
 st.title("S&P 500 Heatmap")
-
+if st.button('Refresh Data'):
+    st.session_state.last_update = datetime.min
+    st.rerun()
 # Initialize session state
 if 'stock_data' not in st.session_state:
     st.session_state.stock_data = get_stock_data(get_sp500_tickers())
@@ -88,10 +90,11 @@ if 'last_update' not in st.session_state:
 
 # Fetch company names (this is cached)
 company_names = fetch_company_names()
-tickers = company_names.index.tolist()
+# Plot only last 50 (trop lourd sinon)
+tickers = company_names.index[:50].tolist()
 
 # Check if we need to update the data
-refresh_interval = timedelta(minutes=15)  # Adjust this as needed
+refresh_interval = timedelta(minutes=60)  # Adjust this as needed
 if should_update_data(st.session_state.last_update, refresh_interval):
     with st.spinner('Fetching latest stock data...'):
         st.session_state.stock_data = get_stock_data(tickers)

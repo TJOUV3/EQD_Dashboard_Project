@@ -50,7 +50,9 @@ def create_stock_table(data, returns, volatility):
 #endregion
 
 st.title("S&P 500 Stocks Screener")
-
+if st.button('Refresh Data'):
+    st.session_state.last_update = datetime.min
+    st.rerun()
 
 if 'stock_data' not in st.session_state:
     st.session_state.stock_data = None
@@ -62,7 +64,7 @@ company_names = fetch_company_names()
 tickers = company_names.index.tolist()
 
 # Check if we need to update the data
-refresh_interval = timedelta(minutes=15)  # Adjust this as needed
+refresh_interval = timedelta(minutes=60)  # Adjust this as needed
 if should_update_data(st.session_state.last_update, refresh_interval):
     with st.spinner('Fetching latest stock data...'):
         st.session_state.stock_data = get_stock_data(tickers)
@@ -79,6 +81,3 @@ st.subheader("S&P 500 Stock Details")
 stock_table = create_stock_table(st.session_state.stock_data, returns, volatility)
 st.dataframe(stock_table, use_container_width=True)
 
-if st.button('Force Refresh Data'):
-    st.session_state.last_update = datetime.min
-    st.rerun()
