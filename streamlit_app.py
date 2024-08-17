@@ -10,4 +10,5 @@ pg = st.navigation(
             "Visualization": [options],
         },
         position="sidebar")
+
 pg.run()
