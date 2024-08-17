@@ -305,12 +305,12 @@ st.markdown("""
         [data-testid="stHeader"] {display: none}
     </style>
     """, unsafe_allow_html=True)
-
-with open('/Users/thomasjouve/Documents/Python/styles.css') as f:
-    st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
-
-# with open('styles.css') as f:
-#     st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+try:
+    with open('/Users/thomasjouve/Documents/Python/styles.css') as f:
+        st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+except:
+    with open('styles.css') as f:
+         st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
 # Sidebar
 with st.sidebar:
@@ -324,7 +324,7 @@ with st.sidebar:
         type_eu_us = st.selectbox("Option's type", ['EU', 'US'])
         strike = st.number_input("Strike", value=0.0, step=0.1)
         maturity = st.number_input("Time to Maturity (in Y)", value=0.0, step=0.1)
-        r = st.number_input("Risk free rate", value=0.0, step=0.001)
+        r = st.number_input("Risk free rate", value=0.0, step=0.01)
         color_wanted = st.color_picker("Pick A Color", "#00f900")
         
         submitted = st.form_submit_button(label='Submit', use_container_width=True)
