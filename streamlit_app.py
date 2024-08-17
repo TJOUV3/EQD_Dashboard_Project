@@ -2,7 +2,6 @@ import streamlit as st
 
 options = st.Page("Visualization\Options_strat.py", title="Options_Strat", icon=":material/history:",default=True)
 stock_screeners = st.Page("Screeners\Stocks_Screener.py", title="Stocks_Screeners", icon=":material/search:")
-heatmap = st.Page("Screeners\Heatmap.py", title="Heatmap", icon=":material/add_circle:")
 
 
 pg = st.navigation(
@@ -11,4 +10,5 @@ pg = st.navigation(
             "Visualization": [options],
         },
         position="sidebar")
+
 pg.run()
