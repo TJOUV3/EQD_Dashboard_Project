@@ -84,7 +84,7 @@ if st.button('Refresh Data'):
     st.rerun()
 # Initialize session state
 if 'stock_data' not in st.session_state:
-    st.session_state.stock_data = get_stock_data(get_sp500_tickers())
+    st.session_state.stock_data = None
 if 'last_update' not in st.session_state:
     st.session_state.last_update = datetime.min
 
