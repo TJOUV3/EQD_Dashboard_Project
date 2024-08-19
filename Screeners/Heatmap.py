@@ -5,14 +5,12 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import streamlit as st
 
+@st.cache_data(ttl=7200)  # Cache for 1 hour
 def get_sp500_tickers():
     url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
     table = pd.read_html(url)[0]
     
-    # On récupère les colonnes souhaitées : Symbol, Security, GICS Sector
     sp500_data = table[['Symbol', 'Security', 'GICS Sector']]
-    
-    # Télécharge les données financières pour chaque ticker
     tickers = sp500_data['Symbol'].tolist()
     market_caps = []
     
@@ -28,37 +26,42 @@ def get_sp500_tickers():
     sp500_data['Market Cap'] = market_caps
     return sp500_data.set_index('Symbol')
 
-def get_stock_data(tickers, period="1mo"):
-    # Télécharge les données financières pour chaque ticker
+def get_stock_data(tickers, start_date, end_date):
     data = yf.download(tickers, start=start_date, end=end_date)
     return data['Adj Close']
 
 def get_last_day_return(stock_prices):
-    # Calcul du "last day return" pour chaque ticker
-    last_day_return = stock_prices.pct_change().iloc[-1] * 100  # Retour en pourcentage
-    return last_day_return
+    return stock_prices.pct_change().iloc[-1] * 100
 
-# Récupération des données du S&P 500
-sp500_data = get_sp500_tickers()
+def update_sp500_data():
+    sp500_data = get_sp500_tickers()
+    end_date = datetime.today().date()
+    start_date = end_date - timedelta(days=7)
+    tickers = sp500_data.index.tolist()
+    stock_prices = get_stock_data(tickers, start_date, end_date)
+    last_day_return = get_last_day_return(stock_prices)
+    sp500_data['Last Day Return (%)'] = last_day_return
+    sector_performance = sp500_data.groupby('GICS Sector')['Last Day Return (%)'].mean().reset_index()
+    sector_performance.rename(columns={'Last Day Return (%)': 'Sector Average Return (%)'}, inplace=True)
+    sp500_data = sp500_data.reset_index().merge(sector_performance, on='GICS Sector', how='left')
+    return sp500_data
 
-# Définir les dates de la semaine souhaitée
-end_date = datetime.today().date()
-start_date = end_date - timedelta(days=7)
+# Initialize session state
+if 'sp500_data' not in st.session_state:
+    st.session_state.sp500_data = update_sp500_data()
+    st.session_state.last_update = datetime.now()
 
-# Télécharger les données de prix des actions
-tickers = sp500_data.index.tolist()
-stock_prices = get_stock_data(tickers, period="1mo")
-last_day_return = get_last_day_return(stock_prices)
+# Add a refresh button
+if st.button('Refresh Data'):
+    st.session_state.sp500_data = update_sp500_data()
+    st.session_state.last_update = datetime.now()
+    st.success('Data refreshed successfully!')
 
-# Ajouter le "last day return" au DataFrame principal
-sp500_data['Last Day Return (%)'] = last_day_return
+# Display last update time
+st.write(f"Last updated: {st.session_state.last_update}")
 
-# Calculer la performance moyenne par secteur
-sector_performance = sp500_data.groupby('GICS Sector')['Last Day Return (%)'].mean().reset_index()
-sector_performance.rename(columns={'Last Day Return (%)': 'Sector Average Return (%)'}, inplace=True)
-
-# Fusionner les performances sectorielles avec les données des actions
-sp500_data = sp500_data.reset_index().merge(sector_performance, on='GICS Sector', how='left')
+# Use the data from session state
+sp500_data = st.session_state.sp500_data
 
 color_scale = [
     (0, "rgb(255, 0, 0)"),        # Bright red for lowest negative return
@@ -81,27 +84,18 @@ fig = px.treemap(
     color='Last Day Return (%)',
     color_continuous_scale=color_scale,
     color_continuous_midpoint=0,
-    range_color=[min_return, max_return],  # Set the range of the color scale
+    range_color=[min_return, max_return],
     hover_data={'Market Cap': ':,.2f', 'Last Day Return (%)': ':.2f'},
     title="S&P 500 Daily Performance",
     labels={'Last Day Return (%)': 'Last Day Return (%)'}
 )
 
-#Update the colorbar to show the full range of returns
-fig.update_coloraxes(
-    colorbar_title="Return (%)",
-    colorbar_tickformat=".2f"
-)
-
-#Update layout for better visibility
 fig.update_layout(
     height=800,
     title_font_size=24,
-    title_x=0.5,  # Center the title
-)
+    title_x=0.4,
+    coloraxis_showscale=False 
+) 
 fig.data[0].texttemplate = "%{label}<br>%{customdata[1]:.2f}%"
 
-#Display the figure
-
 st.plotly_chart(fig, use_container_width=True)
-
