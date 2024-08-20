@@ -457,19 +457,13 @@ with date_col:
         # Affichage du contenu
         st.markdown(content, unsafe_allow_html=True)
 
-# Initialize session state variables
-if 'L_options' not in st.session_state:
-    st.session_state.L_options = []
-if 'L_options_2' not in st.session_state:
-    st.session_state.L_options_2 = []
-if 'L_descr_options' not in st.session_state:
-    st.session_state.L_descr_options = []
-if 'L_color' not in st.session_state:
-    st.session_state.L_color = []
-if 'selected_greek' not in st.session_state:
-    st.session_state.selected_greek = 'payoff'
-if 'plots' not in st.session_state:
-    st.session_state.plots = {}
+def update_delta_value():
+    delta_value = execute_functions(
+        st.session_state.L_options_2, 'delta',
+        Get_parameters(stock_ticker)['lim_inf'],
+        Get_parameters(stock_ticker)['lim_sup'],
+        nvidia_price
+    )
 
 with x_col:
     with st.container():
@@ -534,6 +528,19 @@ with y_col:
         # Affichage du contenu
         st.markdown(content, unsafe_allow_html=True)
 
+# Initialize session state variables
+if 'L_options' not in st.session_state:
+    st.session_state.L_options = []
+if 'L_options_2' not in st.session_state:
+    st.session_state.L_options_2 = []
+if 'L_descr_options' not in st.session_state:
+    st.session_state.L_descr_options = []
+if 'L_color' not in st.session_state:
+    st.session_state.L_color = []
+if 'selected_greek' not in st.session_state:
+    st.session_state.selected_greek = 'payoff'
+if 'plots' not in st.session_state:
+    st.session_state.plots = {}
 
 # Main content area
 chart_col, data_col = st.columns([3,1])
