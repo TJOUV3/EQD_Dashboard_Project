@@ -177,19 +177,13 @@ def plot_function(def_range, res, list_of_options, descr_options, legend, color_
 
 #region Greeks
 
-def calculate_greek(option_params, greek, lim_inf, lim_sup):
+def calculate_greek(option_params, greek, lim_inf, lim_sup, actual_underlying_price):
     # Initialize a list to store the Greek values
     res_greek = []
     descriptions = []
 
     # Extract option parameters
     option_type, K, r, t, vol, buy_sell = option_params
-    print('type = ', option_type)
-    print('K = ', K)
-    print('r = ', r )
-    print('t = ', t)
-    print('vol = ', vol)
-    print('buy/sell = ', buy_sell)
 
     # Set up the QuantLib environment
     calendar = ql.NullCalendar()
@@ -204,6 +198,37 @@ def calculate_greek(option_params, greek, lim_inf, lim_sup):
     # Generate the option description
     description = f"{option_type.capitalize()} option, Strike: {K}, Maturity: {t} years, {buy_sell.capitalize()}"
     descriptions.append(description)
+
+    # Initialize a variable to store the Greek value at the actual underlying price
+    actual_greek_value = None
+
+    # Set up the market data for the actual underlying price
+    spot_handle_actual = ql.QuoteHandle(ql.SimpleQuote(actual_underlying_price))
+    flat_ts = ql.YieldTermStructureHandle(ql.FlatForward(settlement_date, ql.QuoteHandle(ql.SimpleQuote(r)), day_count))
+    vol_ts = ql.BlackVolTermStructureHandle(ql.BlackConstantVol(settlement_date, calendar, ql.QuoteHandle(ql.SimpleQuote(vol)), day_count))
+    process_actual = ql.BlackScholesProcess(spot_handle_actual, flat_ts, vol_ts)
+
+    # Create the option for the actual underlying price
+    european_option_actual = ql.VanillaOption(payoff, exercise)
+    european_option_actual.setPricingEngine(ql.AnalyticEuropeanEngine(process_actual))
+
+    # Calculate the Greek value for the actual underlying price
+    multiplier = 1 if buy_sell == 'buy' else -1
+
+    if greek == 'option_Price':
+        actual_greek_value = multiplier * european_option_actual.NPV()
+    elif greek == 'delta':
+        actual_greek_value = multiplier * european_option_actual.delta()
+    elif greek == 'theta':
+        actual_greek_value = multiplier * european_option_actual.theta()
+    elif greek == 'gamma':
+        actual_greek_value = multiplier * european_option_actual.gamma()
+    elif greek == 'vega':
+        actual_greek_value = multiplier * european_option_actual.vega()
+    elif greek == 'rho':
+        actual_greek_value = multiplier * european_option_actual.rho()
+    else:
+        raise ValueError("Unrecognized Greek. Choose from: 'option_Price', 'delta', 'theta', 'gamma', 'vega', 'rho'.")
 
     # Iterate over each underlying price in the given range
     for S in range(lim_inf, lim_sup):
@@ -240,17 +265,19 @@ def calculate_greek(option_params, greek, lim_inf, lim_sup):
             raise ValueError("Unrecognized Greek. Choose from: 'option_Price', 'delta', 'theta', 'gamma', 'vega', 'rho'.")
 
     # Return the list of Greek values and the corresponding option descriptions
-    return res_greek, descriptions
+    return res_greek, descriptions, actual_greek_value
 
-def execute_functions(list_options, greek, lim_inf, lim_sup):
+def execute_functions(list_options, greek, lim_inf, lim_sup, actual_ul_price):
     list_values = []
     list_descr = []
+    list_actual_greek = []
     for options in list_options:
-        result_greek, descr_option_greek = calculate_greek(options, greek, lim_inf, lim_sup)
+        result_greek, descr_option_greek, actual_greek = calculate_greek(options, greek, lim_inf, lim_sup, actual_ul_price)
         list_values.append(result_greek)
         list_descr.append(descr_option_greek)
+        list_actual_greek.append(actual_greek)
     
-    return list_values, list_descr
+    return list_values, list_descr, list_actual_greek
 
 #endregion
 
@@ -319,7 +346,7 @@ with st.sidebar:
     st.divider()
     
     with st.form(key='params_form'):
-        stock_ticker = st.text_input("Stock", "NVDA")
+        stock_ticker = st.text_input("Stock", "")
         type_trades = st.selectbox("Trade type", ['buy', 'sell'])
         type_option_cp = st.selectbox("Option's type", ['call', 'put'])
         type_eu_us = st.selectbox("Option's type", ['EU', 'US'])
@@ -432,7 +459,10 @@ with date_col:
 
 with x_col:
     with st.container():
-        nvidia_vol = 'X'
+        delta_value = execute_functions(st.session_state.L_options_2, 'delta',
+                Get_parameters(stock_ticker)['lim_inf'],
+                Get_parameters(stock_ticker)['lim_sup'],
+                nvidia_price)
         
         # Définition du style CSS inline
         style = """
@@ -447,13 +477,13 @@ with x_col:
         }
         </style>
         """
-        
+       
         # Création du contenu HTML avec le style appliqué
         content = f"""
         {style}
         <div class="custom-container">
-            <p class="x_text">X</p>
-            <p class="price_details">{nvidia_vol}</p>
+            <p class="x_text">Delta Value</p>
+            <p class="price_details">{delta_value}</p>
         </div>
         """
         
@@ -528,10 +558,11 @@ if submitted:
         # Generate all the plots
         greeks = ['delta', 'gamma', 'theta', 'vega', 'rho', 'option_Price']
         for greek in greeks:
-            result, descr = execute_functions(
+            result, descr, actual_greek = execute_functions(
                 st.session_state.L_options_2, greek,
                 Get_parameters(stock_ticker)['lim_inf'],
-                Get_parameters(stock_ticker)['lim_sup']
+                Get_parameters(stock_ticker)['lim_sup'],
+                price_stock
             )
             der = Simulate_data_dervative(result)
             st.session_state.plots[greek] = plot_function(
