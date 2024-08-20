@@ -13,7 +13,7 @@ import yfinance as yf
 import QuantLib as ql
 import streamlit as st
 import plotly.graph_objs as go
-from datetime import datetime
+from datetime import datetime,timedelta
 
 #endregion
 
@@ -73,7 +73,41 @@ def get_stock_price_and_volatility(ticker, period='1y'):
     annual_volatility = daily_volatility * np.sqrt(252)
     
     return latest_price, annual_volatility
+def get_historical_data(ticker, period='1mo'):
+    stock = yf.Ticker(ticker)
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=360)
+    data = stock.history(start=start_date, end=end_date)
+    return data
+def create_stock_chart(data, ticker):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=data.index,
+        y=data['Close'],
+        mode='lines',
+        name='Closing Price',
+        line=dict(color='#00BFFF', width=2)
+    ))
 
+    fig.update_layout(
+        title=f'{ticker} Closing Price - Last Month',
+        yaxis_title='Price',
+        xaxis_title='Date',
+        height=400,
+        margin=dict(l=0, r=0, t=30, b=0),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='white'),
+        xaxis=dict(
+            rangeslider=dict(visible=False),
+            type='date'
+        ),
+        yaxis=dict(
+            gridcolor='rgba(255,255,255,0.2)'
+        )
+    )
+
+    return fig
 def calculate_option_price(option_params, St):
     option_type = option_params[0] 
     K = option_params[1]  # Strike price
@@ -359,7 +393,7 @@ with st.sidebar:
         clear = st.form_submit_button(label='🗑️', use_container_width=True)
 
 # Main layout
-title_col, emp_col, equity_col, vol_col, date_col, x_col, y_col = st.columns([1,0.2,1,1,1,1,1])
+title_col, emp_col, equity_col, vol_col, date_col, price_chart_col = st.columns([1,0.2,1,1,1,2])
 
 # Title column
 with title_col:
@@ -457,76 +491,83 @@ with date_col:
         # Affichage du contenu
         st.markdown(content, unsafe_allow_html=True)
 
-def update_delta_value():
-    delta_value = execute_functions(
-        st.session_state.L_options_2, 'delta',
-        Get_parameters(stock_ticker)['lim_inf'],
-        Get_parameters(stock_ticker)['lim_sup'],
-        nvidia_price
-    )
+# def update_delta_value():
+#     delta_value = execute_functions(
+#         st.session_state.L_options_2, 'delta',
+#         Get_parameters(stock_ticker)['lim_inf'],
+#         Get_parameters(stock_ticker)['lim_sup'],
+#         nvidia_price
+#     )
 
-with x_col:
-    with st.container():
-        delta_value = execute_functions(st.session_state.L_options_2, 'delta',
-                Get_parameters(stock_ticker)['lim_inf'],
-                Get_parameters(stock_ticker)['lim_sup'],
-                nvidia_price)
+# with x_col:
+#     with st.container():
+#         delta_value = execute_functions(st.session_state.L_options_2, 'delta',
+#                 Get_parameters(stock_ticker)['lim_inf'],
+#                 Get_parameters(stock_ticker)['lim_sup'],
+#                 nvidia_price)
         
-        # Définition du style CSS inline
-        style = """
-        <style>
-        .custom-container {
-        }
-        .x_text {
-            margin-bottom: 0;
-        }
-        .price_details {
-            margin-top: 15px;
-        }
-        </style>
-        """
+#         # Définition du style CSS inline
+#         style = """
+#         <style>
+#         .custom-container {
+#         }
+#         .x_text {
+#             margin-bottom: 0;
+#         }
+#         .price_details {
+#             margin-top: 15px;
+#         }
+#         </style>
+#         """
        
-        # Création du contenu HTML avec le style appliqué
-        content = f"""
-        {style}
-        <div class="custom-container">
-            <p class="x_text">Delta Value</p>
-            <p class="price_details">{delta_value}</p>
-        </div>
-        """
+#         # Création du contenu HTML avec le style appliqué
+#         content = f"""
+#         {style}
+#         <div class="custom-container">
+#             <p class="x_text">Delta Value</p>
+#             <p class="price_details">{delta_value}</p>
+#         </div>
+#         """
         
-        # Affichage du contenu
-        st.markdown(content, unsafe_allow_html=True)
+#         # Affichage du contenu
+#         st.markdown(content, unsafe_allow_html=True)
 
-with y_col:
+# with y_col:
+#     with st.container():
+#         nvidia_vol = 'Y'
+        
+#         # Définition du style CSS inline
+#         style = """
+#         <style>
+#         .custom-container {
+#         }
+#         .y_text {
+#             margin-bottom: 0;
+#         }
+#         .price_details {
+#             margin-top: 15px;
+#         }
+#         </style>
+#         """
+        
+#         # Création du contenu HTML avec le style appliqué
+#         content = f"""
+#         {style}
+#         <div class="custom-container">
+#             <p class="y_text">Y</p>
+#             <p class="price_details">{nvidia_vol}</p>
+#         </div>
+#         """
+        
+#         # Affichage du contenu
+#         st.markdown(content, unsafe_allow_html=True)
+with price_chart_col:
     with st.container():
-        nvidia_vol = 'Y'
+        if 'stock_data' not in st.session_state or submitted:
+            st.session_state.stock_data = get_historical_data(stock_ticker)
         
-        # Définition du style CSS inline
-        style = """
-        <style>
-        .custom-container {
-        }
-        .y_text {
-            margin-bottom: 0;
-        }
-        .price_details {
-            margin-top: 15px;
-        }
-        </style>
-        """
-        
-        # Création du contenu HTML avec le style appliqué
-        content = f"""
-        {style}
-        <div class="custom-container">
-            <p class="y_text">Y</p>
-            <p class="price_details">{nvidia_vol}</p>
-        </div>
-        """
-        
-        # Affichage du contenu
-        st.markdown(content, unsafe_allow_html=True)
+        fig = create_stock_chart(st.session_state.stock_data, stock_ticker)
+        st.plotly_chart(fig, use_container_width=True)
 
 # Initialize session state variables
 if 'L_options' not in st.session_state:
@@ -547,6 +588,8 @@ chart_col, data_col = st.columns([3,1])
 
 # Form submission logic
 if submitted:
+        st.session_state.stock_data = get_historical_data(stock_ticker)
+
         price_stock, vol_stock = get_stock_price_and_volatility(stock_ticker, period='1y')
         option1_params = [type_option_cp, strike, r, maturity, vol_stock, type_trades]
         st.session_state.L_options_2.append(option1_params)
@@ -609,5 +652,7 @@ if clear:
     st.session_state.L_options = []
     st.session_state.L_descr_options = []
     st.session_state.L_color = []
+    if 'stock_data' in st.session_state:
+        del st.session_state.stock_data
 
 #endregion
