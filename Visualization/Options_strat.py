@@ -346,7 +346,7 @@ with st.sidebar:
     st.divider()
     
     with st.form(key='params_form'):
-        stock_ticker = st.text_input("Stock", "")
+        stock_ticker = st.text_input("Stock", "NVDA")
         type_trades = st.selectbox("Trade type", ['buy', 'sell'])
         type_option_cp = st.selectbox("Option's type", ['call', 'put'])
         type_eu_us = st.selectbox("Option's type", ['EU', 'US'])
