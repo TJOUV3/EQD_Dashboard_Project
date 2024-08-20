@@ -457,6 +457,8 @@ with date_col:
         # Affichage du contenu
         st.markdown(content, unsafe_allow_html=True)
 
+
+
 with x_col:
     with st.container():
         delta_value = execute_functions(st.session_state.L_options_2, 'delta',
@@ -523,20 +525,6 @@ with y_col:
 
 # Main content area
 chart_col, data_col = st.columns([3,1])
-
-# Initialize session state variables
-if 'L_options' not in st.session_state:
-    st.session_state.L_options = []
-if 'L_options_2' not in st.session_state:
-    st.session_state.L_options_2 = []
-if 'L_descr_options' not in st.session_state:
-    st.session_state.L_descr_options = []
-if 'L_color' not in st.session_state:
-    st.session_state.L_color = []
-if 'selected_greek' not in st.session_state:
-    st.session_state.selected_greek = 'payoff'
-if 'plots' not in st.session_state:
-    st.session_state.plots = {}
 
 # Form submission logic
 if submitted:
