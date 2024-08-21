@@ -73,12 +73,14 @@ def get_stock_price_and_volatility(ticker, period='1y'):
     annual_volatility = daily_volatility * np.sqrt(252)
     
     return latest_price, annual_volatility
+
 def get_historical_data(ticker, period='1mo'):
     stock = yf.Ticker(ticker)
     end_date = datetime.now()
     start_date = end_date - timedelta(days=360)
     data = stock.history(start=start_date, end=end_date)
     return data
+
 def create_stock_chart(data, ticker):
     fig = go.Figure()
     fig.add_trace(go.Scatter(
@@ -108,6 +110,7 @@ def create_stock_chart(data, ticker):
     )
 
     return fig
+
 def calculate_option_price(option_params, St):
     option_type = option_params[0] 
     K = option_params[1]  # Strike price
@@ -237,6 +240,7 @@ def calculate_greek(option_params, greek, lim_inf, lim_sup, actual_underlying_pr
     actual_greek_value = None
 
     # Set up the market data for the actual underlying price
+    print(f"actual_underlying_price: {actual_underlying_price}")
     spot_handle_actual = ql.QuoteHandle(ql.SimpleQuote(actual_underlying_price))
     flat_ts = ql.YieldTermStructureHandle(ql.FlatForward(settlement_date, ql.QuoteHandle(ql.SimpleQuote(r)), day_count))
     vol_ts = ql.BlackVolTermStructureHandle(ql.BlackConstantVol(settlement_date, calendar, ql.QuoteHandle(ql.SimpleQuote(vol)), day_count))
@@ -310,8 +314,9 @@ def execute_functions(list_options, greek, lim_inf, lim_sup, actual_ul_price):
         list_values.append(result_greek)
         list_descr.append(descr_option_greek)
         list_actual_greek.append(actual_greek)
-    
-    return list_values, list_descr, list_actual_greek
+
+    greek_value = sum(list_actual_greek)  
+    return list_values, list_descr, greek_value
 
 #endregion
 
@@ -393,7 +398,22 @@ with st.sidebar:
         clear = st.form_submit_button(label='🗑️', use_container_width=True)
 
 # Main layout
-title_col, emp_col, equity_col, vol_col, date_col, price_chart_col = st.columns([1,0.2,1,1,1,2])
+# title_col, emp_col, equity_col, vol_col, date_col, price_chart_col = st.columns([1,0.2,1,1,1,2])
+title_col, emp_col, equity_col, vol_col, delta_col, gamma_col, vega_col = st.columns([1,0.2,1,1,1,1,1])
+
+# Initialize session state variables
+if 'L_options' not in st.session_state:
+    st.session_state.L_options = []
+if 'L_options_2' not in st.session_state:
+    st.session_state.L_options_2 = []
+if 'L_descr_options' not in st.session_state:
+    st.session_state.L_descr_options = []
+if 'L_color' not in st.session_state:
+    st.session_state.L_color = []
+if 'selected_greek' not in st.session_state:
+    st.session_state.selected_greek = 'payoff'
+if 'plots' not in st.session_state:
+    st.session_state.plots = {}
 
 # Title column
 with title_col:
@@ -460,128 +480,24 @@ with vol_col:
         # Affichage du contenu
         st.markdown(content, unsafe_allow_html=True)
 
-with date_col:
-    with st.container():
+def update_delta_value():
+    delta_value = execute_functions(
+        st.session_state.L_options_2, 'delta',
+        1, 250,float(nvidia_price))[2]
+    return round(delta_value, 2)
 
-        nvidia_vol = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Définition du style CSS inline
-        style = """
-        <style>
-        .custom-container {
-        }
-        .date_text {
-            margin-bottom: 0;
-        }
-        .price_details {
-            margin-top: 15px;
-        }
-        </style>
-        """
-        
-        # Création du contenu HTML avec le style appliqué
-        content = f"""
-        {style}
-        <div class="custom-container">
-            <p class="date_text">Last Update</p>
-            <p class="price_details">{nvidia_vol}</p>
-        </div>
-        """
-        
-        # Affichage du contenu
-        st.markdown(content, unsafe_allow_html=True)
+def update_gamma_value():
+    gamma_value = execute_functions(
+        st.session_state.L_options_2, 'gamma',
+        1, 250,float(nvidia_price))[2]
+    return round(gamma_value, 3)
 
-# def update_delta_value():
-#     delta_value = execute_functions(
-#         st.session_state.L_options_2, 'delta',
-#         Get_parameters(stock_ticker)['lim_inf'],
-#         Get_parameters(stock_ticker)['lim_sup'],
-#         nvidia_price
-#     )
+def update_vega_value():
+    vega_value = execute_functions(
+        st.session_state.L_options_2, 'vega',
+        1, 250,float(nvidia_price))[2]
+    return round(vega_value, 2)
 
-# with x_col:
-#     with st.container():
-#         delta_value = execute_functions(st.session_state.L_options_2, 'delta',
-#                 Get_parameters(stock_ticker)['lim_inf'],
-#                 Get_parameters(stock_ticker)['lim_sup'],
-#                 nvidia_price)
-        
-#         # Définition du style CSS inline
-#         style = """
-#         <style>
-#         .custom-container {
-#         }
-#         .x_text {
-#             margin-bottom: 0;
-#         }
-#         .price_details {
-#             margin-top: 15px;
-#         }
-#         </style>
-#         """
-       
-#         # Création du contenu HTML avec le style appliqué
-#         content = f"""
-#         {style}
-#         <div class="custom-container">
-#             <p class="x_text">Delta Value</p>
-#             <p class="price_details">{delta_value}</p>
-#         </div>
-#         """
-        
-#         # Affichage du contenu
-#         st.markdown(content, unsafe_allow_html=True)
-
-# with y_col:
-#     with st.container():
-#         nvidia_vol = 'Y'
-        
-#         # Définition du style CSS inline
-#         style = """
-#         <style>
-#         .custom-container {
-#         }
-#         .y_text {
-#             margin-bottom: 0;
-#         }
-#         .price_details {
-#             margin-top: 15px;
-#         }
-#         </style>
-#         """
-        
-#         # Création du contenu HTML avec le style appliqué
-#         content = f"""
-#         {style}
-#         <div class="custom-container">
-#             <p class="y_text">Y</p>
-#             <p class="price_details">{nvidia_vol}</p>
-#         </div>
-#         """
-        
-#         # Affichage du contenu
-#         st.markdown(content, unsafe_allow_html=True)
-with price_chart_col:
-    with st.container():
-        if 'stock_data' not in st.session_state or submitted:
-            st.session_state.stock_data = get_historical_data(stock_ticker)
-        
-        fig = create_stock_chart(st.session_state.stock_data, stock_ticker)
-        st.plotly_chart(fig, use_container_width=True)
-
-# Initialize session state variables
-if 'L_options' not in st.session_state:
-    st.session_state.L_options = []
-if 'L_options_2' not in st.session_state:
-    st.session_state.L_options_2 = []
-if 'L_descr_options' not in st.session_state:
-    st.session_state.L_descr_options = []
-if 'L_color' not in st.session_state:
-    st.session_state.L_color = []
-if 'selected_greek' not in st.session_state:
-    st.session_state.selected_greek = 'payoff'
-if 'plots' not in st.session_state:
-    st.session_state.plots = {}
 
 # Main content area
 chart_col, data_col = st.columns([3,1])
@@ -629,6 +545,96 @@ if submitted:
             ['Payoff of the Option', 'Stock Price (St)', 'Payoff'], st.session_state.L_color
         )
 
+with delta_col:
+    with st.container():
+        delta_value = update_delta_value()
+        
+        # Définition du style CSS inline
+        style = """
+        <style>
+        .custom-container {
+        }
+        .delta_text {
+            margin-bottom: 0;
+        }
+        .price_details {
+            margin-top: 15px;
+        }
+        </style>
+        """
+       
+        # Création du contenu HTML avec le style appliqué
+        content = f"""
+        {style}
+        <div class="custom-container">
+            <p class="delta_text">Delta Value</p>
+            <p class="price_details">{delta_value}</p>
+        </div>
+        """
+        
+        # Affichage du contenu
+        st.markdown(content, unsafe_allow_html=True)  
+
+with gamma_col:
+    with st.container():
+        gamma_value = update_gamma_value()
+        
+        # Définition du style CSS inline
+        style = """
+        <style>
+        .custom-container {
+        }
+        .gamma_text {
+            margin-bottom: 0;
+        }
+        .price_details {
+            margin-top: 15px;
+        }
+        </style>
+        """
+       
+        # Création du contenu HTML avec le style appliqué
+        content = f"""
+        {style}
+        <div class="custom-container">
+            <p class="gamma_text">Gamma Value</p>
+            <p class="price_details">{gamma_value}</p>
+        </div>
+        """
+        
+        # Affichage du contenu
+        st.markdown(content, unsafe_allow_html=True)     
+
+with vega_col:
+    with st.container():
+        vega_value = update_vega_value()
+        
+        # Définition du style CSS inline
+        style = """
+        <style>
+        .custom-container {
+        }
+        .vega_text {
+            margin-bottom: 0;
+        }
+        .price_details {
+            margin-top: 15px;
+        }
+        </style>
+        """
+       
+        # Création du contenu HTML avec le style appliqué
+        content = f"""
+        {style}
+        <div class="custom-container">
+            <p class="vega_text">Vega Value</p>
+            <p class="price_details">{vega_value}</p>
+        </div>
+        """
+        
+        # Affichage du contenu
+        st.markdown(content, unsafe_allow_html=True) 
+
 with chart_col:
     if st.session_state.plots:
         st.markdown(f"<p class='price_details'>{st.session_state.L_descr_options}</p>", unsafe_allow_html=True)
@@ -643,6 +649,14 @@ with chart_col:
         
         if st.session_state.selected_greek in st.session_state.plots:
             st.plotly_chart(st.session_state.plots[st.session_state.selected_greek], use_container_width=True)
+
+with data_col:
+    with st.container():
+        if 'stock_data' not in st.session_state or submitted:
+            st.session_state.stock_data = get_historical_data(stock_ticker)
+        
+        fig = create_stock_chart(st.session_state.stock_data, stock_ticker)
+        st.plotly_chart(fig, use_container_width=True)
 
 if clear:
     st.session_state.L_options = []

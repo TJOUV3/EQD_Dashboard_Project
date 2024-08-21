@@ -80,7 +80,7 @@ html, body, [class*="css"] {
     padding-top: 10px;
 }
 
-.date_text {
+.delta_text {
     font-size: 14px; 
     font-family: 'Space Grotesk';
     color: #ff6b08;
@@ -90,7 +90,7 @@ html, body, [class*="css"] {
     padding-top: 10px;
 }
 
-.x_text {
+.gamma_text {
     font-size: 14px; 
     font-family: 'Space Grotesk';
     color: #807af4;
@@ -100,7 +100,7 @@ html, body, [class*="css"] {
     padding-top: 10px;
 }
 
-.y_text {
+.vega_text {
     font-size: 14px; 
     font-family: 'Space Grotesk';
     color: #01acf1;
