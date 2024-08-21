@@ -18,22 +18,22 @@ from datetime import datetime,timedelta
 #endregion
 
 #region functions payoffs, option_description, derivated_products
-def payoff(call_put, St,K,Prenium,type,Maturity, buy_sell):
+def payoff(call_put, St,K,Prenium,type,Maturity, buy_sell, nb_of_options):
     if call_put == 'call':
         if buy_sell == 'buy':
-            return max(0, St-K) - Prenium
+            return nb_of_options*(max(0, St-K) - Prenium)
         else:
-            return -max(0, St-K) + Prenium
+            return nb_of_options*(-max(0, St-K) + Prenium)
     elif call_put == 'put':
         if buy_sell == 'buy':
-            return max(K-St, 0) - Prenium
+            return nb_of_options*(max(K-St, 0) - Prenium)
         else:
-            return -max(K-St, 0) + Prenium
+            return nb_of_options*(-max(K-St, 0) + Prenium)
     else:
         return 0
 
-def option_description(call_put, Strike, type_option, Maturity, buy_sell):
-    return str(buy_sell) + ' ' + str(type_option) + ' ' + str(call_put) + ' ' +  str(Maturity) + 'Y' +  ', Strike = ' + str(Strike)
+def option_description(call_put, Strike, type_option, Maturity, buy_sell, nb_of_options):
+    return str(buy_sell) + ' ' + str(nb_of_options) + ' ' + str(type_option) + ' ' + str(call_put) + ' ' +  str(Maturity) + 'Y' +  ', Strike = ' + str(Strike)
 
 def derivated_products(St, list_options):
     resulting_payoff = 0
@@ -41,7 +41,7 @@ def derivated_products(St, list_options):
     if list_options:
         for sublist in list_options:
             if sublist:
-                resulting_payoff = resulting_payoff + payoff(sublist[0], St, sublist[1], sublist[2], sublist[3], sublist[4], sublist[5])
+                resulting_payoff = resulting_payoff + payoff(sublist[0], St, sublist[1], sublist[2], sublist[3], sublist[4], sublist[5], sublist[6])
 
     return resulting_payoff
 
@@ -118,6 +118,7 @@ def calculate_option_price(option_params, St):
     t = option_params[3]  # Time to maturity (in years)
     vol = option_params[4]  # Volatility
     buy_sell = option_params[5]  # Buy or sell
+    nb_options = option_params[6]   # Nb of options wanted
 
     # Set up the dates
     calendar = ql.NullCalendar()
@@ -153,11 +154,11 @@ def calculate_option_price(option_params, St):
 
 #region Simulate functions
     
-def Simulate_data_call_put(limit_inf, limit_sup, call_put, strike, prenium, type_option,maturity,buy_sell):
+def Simulate_data_call_put(limit_inf, limit_sup, call_put, strike, prenium, type_option,maturity,buy_sell, nb_of_options):
     result = []
-    descr = option_description(call_put, strike, type_option, maturity, buy_sell)
+    descr = option_description(call_put, strike, type_option, maturity, buy_sell, nb_of_options)
     for price in range(limit_inf,limit_sup):
-        result.append(payoff(call_put,price,strike,prenium,type_option,maturity,buy_sell))
+        result.append(payoff(call_put,price,strike,prenium,type_option,maturity,buy_sell, nb_of_options))
     return result, descr
 
 def Simulate_data_dervative(list_options):
@@ -220,7 +221,7 @@ def calculate_greek(option_params, greek, lim_inf, lim_sup, actual_underlying_pr
     descriptions = []
 
     # Extract option parameters
-    option_type, K, r, t, vol, buy_sell = option_params
+    option_type, K, r, t, vol, buy_sell, nb_options = option_params
 
     # Set up the QuantLib environment
     calendar = ql.NullCalendar()
@@ -251,7 +252,7 @@ def calculate_greek(option_params, greek, lim_inf, lim_sup, actual_underlying_pr
     european_option_actual.setPricingEngine(ql.AnalyticEuropeanEngine(process_actual))
 
     # Calculate the Greek value for the actual underlying price
-    multiplier = 1 if buy_sell == 'buy' else -1
+    multiplier = 1 * nb_options if buy_sell == 'buy' else -1 * nb_options
 
     if greek == 'option_Price':
         actual_greek_value = multiplier * european_option_actual.NPV()
@@ -285,7 +286,7 @@ def calculate_greek(option_params, greek, lim_inf, lim_sup, actual_underlying_pr
         european_option.setPricingEngine(ql.AnalyticEuropeanEngine(process))
 
         # Calculate the Greek value
-        multiplier = 1 if buy_sell == 'buy' else -1
+        multiplier = 1 * nb_options if buy_sell == 'buy' else -1 * nb_options
 
         if greek == 'option_Price':
             res_greek.append(multiplier * european_option.NPV())
@@ -333,8 +334,10 @@ def Get_parameters(ticker="NVDA"):
     r1 = 0.035
     type1 = "EU"    #Option's Type (EU ou US)
     M1 = 1          #Maturity
-    option1_params = ['call', K_Call, r1, T1, volatility_stocks, 'sell'] # Buy Call option parameters
-    option2_params = ['call', K_Put, r1, T1, volatility_stocks, 'buy'] # Sell Put option parameters
+    nb_o1 = 1
+    nb_o2 = 1
+    option1_params = ['call', K_Call, r1, T1, volatility_stocks, 'sell', nb_o1] # Buy Call option parameters
+    option2_params = ['call', K_Put, r1, T1, volatility_stocks, 'buy', nb_o2] # Sell Put option parameters
     options_params = [
         option1_params,  # Buy Call option parameters
         option2_params   # Sell Put option parameters
@@ -387,6 +390,7 @@ with st.sidebar:
     with st.form(key='params_form'):
         stock_ticker = st.text_input("Stock", "NVDA")
         type_trades = st.selectbox("Trade type", ['buy', 'sell'])
+        quantity = st.number_input("Number of Options", value=1, step=1)
         type_option_cp = st.selectbox("Option's type", ['call', 'put'])
         type_eu_us = st.selectbox("Option's type", ['EU', 'US'])
         strike = st.number_input("Strike", value=0.0, step=0.1)
@@ -507,13 +511,13 @@ if submitted:
         st.session_state.stock_data = get_historical_data(stock_ticker)
 
         price_stock, vol_stock = get_stock_price_and_volatility(stock_ticker, period='1y')
-        option1_params = [type_option_cp, strike, r, maturity, vol_stock, type_trades]
+        option1_params = [type_option_cp, strike, r, maturity, vol_stock, type_trades, quantity]
         st.session_state.L_options_2.append(option1_params)
         option_prenium = calculate_option_price(option1_params, price_stock)
         result_option1, descr_option1 = Simulate_data_call_put(
             Get_parameters(stock_ticker)['lim_inf'],
             Get_parameters(stock_ticker)['lim_sup'],
-            type_option_cp, strike, option_prenium, type_eu_us, maturity, type_trades
+            type_option_cp, strike, option_prenium, type_eu_us, maturity, type_trades, quantity
         )
         st.session_state.L_options.append(result_option1)
         st.session_state.L_descr_options.append(descr_option1)
