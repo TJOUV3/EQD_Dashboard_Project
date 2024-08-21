@@ -321,6 +321,35 @@ def execute_functions(list_options, greek, lim_inf, lim_sup, actual_ul_price):
 
 #endregion
 
+#region Hedging
+
+def delta_hedging_ptf(actual_delta_value, ticker):
+    stock_to_buy_or_sell = 0
+    nb_of_stocks_per_options = 100
+    stock_to_buy_or_sell = nb_of_stocks_per_options * actual_delta_value
+    stock_price = round(get_stock_price_and_volatility(ticker, period='1y')[0],2)
+    if actual_delta_value > 0:
+        cost_hedging = stock_to_buy_or_sell * stock_price
+        type_trade = 'Sell'
+    elif actual_delta_value < 0:
+        cost_hedging = (-1) * stock_to_buy_or_sell * stock_price
+        type_trade = 'Buy'
+    else :
+        cost_hedging = 0
+        type_trade = ""
+    data = {
+    'Stock': [ticker],
+    'Trade': [type_trade],
+    'Quantity': [stock_to_buy_or_sell],
+    'Asset Price': [stock_price],
+    'Total Cost': [cost_hedging]
+}
+    tab = pd.DataFrame(data).reset_index(drop=True)
+    return tab
+
+
+#endregion
+
 #region Parameters
 
 # Example for NVIDIA
@@ -656,11 +685,10 @@ with chart_col:
 
 with data_col:
     with st.container():
-        if 'stock_data' not in st.session_state or submitted:
-            st.session_state.stock_data = get_historical_data(stock_ticker)
-        
-        fig = create_stock_chart(st.session_state.stock_data, stock_ticker)
-        st.plotly_chart(fig, use_container_width=True)
+        delta_value = update_delta_value()
+        tab = delta_hedging_ptf(delta_value, stock_ticker)
+        st.table(tab)
+            
 
 if clear:
     st.session_state.L_options = []
