@@ -29,6 +29,17 @@ def payoff(call_put, St,K,Prenium,type,Maturity, buy_sell, nb_of_options):
             return nb_of_options*(max(K-St, 0) - Prenium)
         else:
             return nb_of_options*(-max(K-St, 0) + Prenium)
+    elif call_put == 'digital call':
+        if buy_sell == 'buy':
+            if St>K:
+                return nb_of_options*(100 - Prenium)
+            else:
+                return nb_of_options*(0 - Prenium)
+        else:
+            if St>K:
+                return nb_of_options*(-100 + Prenium)
+            else:
+                return nb_of_options*(0 + Prenium)
     else:
         return 0
 
@@ -130,6 +141,8 @@ def calculate_option_price(option_params, St):
         payoff = ql.PlainVanillaPayoff(ql.Option.Call, K)
     elif option_type == 'put':
         payoff = ql.PlainVanillaPayoff(ql.Option.Put, K)
+    elif option_type == 'digital call':
+        payoff = ql.CashOrNothingPayoff(ql.Option.Call, K, 100)
     else:
         raise ValueError("Unrecognized option type. Choose 'call' or 'put'.")
 
@@ -230,7 +243,13 @@ def calculate_greek(option_params, greek, lim_inf, lim_sup, actual_underlying_pr
     day_count = ql.Actual365Fixed()
 
     # Create the option payoff and exercise
-    payoff = ql.PlainVanillaPayoff(ql.Option.Call if option_type == 'call' else ql.Option.Put, K)
+    if option_type == 'call':
+        payoff = ql.PlainVanillaPayoff(ql.Option.Call, K)
+    elif option_type == 'put':
+        payoff = ql.PlainVanillaPayoff(ql.Option.Put, K)
+    elif option_type == 'digital call':
+        payoff = ql.CashOrNothingPayoff(ql.Option.Call, K, 100)
+
     exercise = ql.EuropeanExercise(maturity_date)
 
     # Generate the option description
@@ -420,7 +439,7 @@ with st.sidebar:
         stock_ticker = st.text_input("Stock", "NVDA")
         type_trades = st.selectbox("Trade type", ['buy', 'sell'])
         quantity = st.number_input("Number of Options", value=1, step=1)
-        type_option_cp = st.selectbox("Option's type", ['call', 'put'])
+        type_option_cp = st.selectbox("Option's type", ['call', 'put', 'digital call'])
         type_eu_us = st.selectbox("Option's type", ['EU', 'US'])
         strike = st.number_input("Strike", value=0.0, step=0.1)
         maturity = st.number_input("Time to Maturity (in Y)", value=0.0, step=0.1)
