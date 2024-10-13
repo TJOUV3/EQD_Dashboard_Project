@@ -4,10 +4,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 #import openai
 import os
-import huggingface_hub
+#import huggingface_hub
 import io
 import base64
-from huggingface_hub import InferenceClient
+#from huggingface_hub import InferenceClient
 import numpy as np
 import yfinance as yf
 import QuantLib as ql
@@ -339,6 +339,7 @@ def execute_functions(list_options, greek, lim_inf, lim_sup, actual_ul_price):
     return list_values, list_descr, greek_value
 
 #endregion
+
 
 #region Hedging
 
