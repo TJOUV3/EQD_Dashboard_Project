@@ -14,7 +14,8 @@ from datetime import datetime,timedelta
 import scipy
 from scipy.optimize import minimize
 from sklearn.metrics import mean_squared_error
-from openbb import obb
+from mpl_toolkits.mplot3d import Axes3D
+
 
 
 #endregion
@@ -55,39 +56,130 @@ def get_stock_price_and_volatility(ticker, period='1y'):
 # Spécifiez le ticker pour lequel vous voulez obtenir les options
 ticker = "NVDA"
 
-def get_options_data(ticker, option_params):
+import yfinance as yf
+import pandas as pd
 
+def get_all_options(ticker, option_params):
+    # Créer un objet Ticker avec yfinance
     stock = yf.Ticker(ticker)
-    option_type = option_params[0] 
+    option_type = option_params[0]  # 'call' ou 'put'
     K = option_params[1]  # Strike price
-    r = option_params[2]  # Risk-free rate
-    t = option_params[3]  # Time to maturity (in years)
+    r = option_params[2]  # Taux sans risque
+    t = option_params[3]  # Temps jusqu'à l'échéance (en années)
 
-    # Obtenez les dates d'expiration disponibles pour les options
+    # Obtenir les dates d'expiration disponibles pour les options
+    expirations = stock.options
+    all_options_data = []
+
+    # Parcourir chaque date d'expiration
+    for expiration_date in expirations:
+        # Obtenir la chaîne d'options pour cette date d'expiration
+        options_chain = stock.option_chain(expiration_date)
+
+        # Sélectionner les options selon le type (call ou put)
+        if option_type == 'call':
+            options = options_chain.calls
+        elif option_type == 'put':
+            options = options_chain.puts
+        else:
+            return "Invalid option type. Choose 'call' or 'put'."
+
+        # Ajouter une colonne 'expiration' pour la date d'échéance
+        options['expiration'] = expiration_date
+
+        # Ajouter les options à la liste
+        all_options_data.append(options)
+
+    # Combiner les DataFrames pour chaque date d'expiration en un seul DataFrame
+    options_df = pd.concat(all_options_data, ignore_index=True)
+    
+    # Calculer les limites de strikes basées sur K
+    lower_limit = K * 0.70  # 70% de K
+    upper_limit = K * 1.30  # 130% de K
+
+    # Filtrer les options pour ne garder que celles dont les strikes sont dans la plage de K ± 30%
+    options_df = options_df[(options_df['strike'] >= lower_limit) & (options_df['strike'] <= upper_limit)]
+
+    # Ne conserver que les colonnes nécessaires
+    return options_df[['strike', 'expiration', 'lastPrice', 'bid', 'ask', 'impliedVolatility']]
+
+
+def create_volatility_table(options_df):
+    # Convertir la colonne 'expiration' en datetime
+    options_df['expiration'] = pd.to_datetime(options_df['expiration'])
+
+    # Créer une table pivot avec les strikes en lignes et les expirations en colonnes
+    volatility_table = options_df.pivot_table(
+        index='strike',
+        columns='expiration',
+        values='impliedVolatility',
+        aggfunc='mean'  # Utiliser 'mean' au cas où il y aurait des doublons
+    )
+
+    # Interpolation linéaire sur les lignes (strikes)
+    volatility_table = volatility_table.interpolate(method='linear', axis=0)  # Interpoler sur les lignes
+
+    # Interpolation linéaire sur les colonnes (expirations)
+    volatility_table = volatility_table.interpolate(method='linear', axis=1)  # Interpoler sur les colonnes
+
+    return volatility_table
+
+# Example usage
+options_data = get_all_options("NVDA", ['call', 130, 0.05, 0.1])
+volatility_table = create_volatility_table(options_data)
+print(volatility_table)
+print(volatility_table.head())
+print(volatility_table.index)  # Should be strike prices
+print('col :', volatility_table.columns)  # Should be expiration dates
+print(volatility_table.isnull().sum())  # Check for any remaining NaN values
+
+'''
+def get_options_data(ticker, option_params):
+    stock = yf.Ticker(ticker)
+    option_type = option_params[0]  # 'call' ou 'put'
+    K = option_params[1]  # Strike price
+    r = option_params[2]  # Taux sans risque
+    t = option_params[3]  # Temps jusqu'à l'échéance (en années)
+
+    # Convertir le temps en jours
+    days_until_maturity = int(t * 365)
+    print(f"Jours jusqu'à l'échéance: {days_until_maturity}")
+
+    # Calculer la date d'échéance souhaitée
+    expiration_wanted = datetime.today() + timedelta(days=days_until_maturity)
+    expiration_wanted_str = expiration_wanted.strftime('%Y-%m-%d')
+    print('Date d’échéance désirée:', expiration_wanted_str)
+
+    # Obtenir les dates d'expiration disponibles pour les options
     expirations = stock.options
     print("Dates d'expiration disponibles :", expirations)
 
-    # Choisissez une date d'expiration spécifique
-    expiration_date = expirations[-1]  # Sélection de la dernière date disponible
+    # Sélectionner la date d'expiration la plus proche
+    closest_expiration = min(expirations, key=lambda x: abs(datetime.strptime(x, '%Y-%m-%d') - expiration_wanted))
+    print(f"Date d'expiration la plus proche: {closest_expiration}")
+
+    # Obtenir la chaîne d'options pour cette date d'expiration
+    options_chain = stock.option_chain(closest_expiration)
+
+    # Sélectionner les options en fonction du type (call ou put)
     if option_type == 'call':
-        res_tab = options_chain.calls(expiration_date)
+        res_tab = options_chain.calls
     elif option_type == 'put':
-        res_tab = options_chain.puts(expiration_date)
-    else :
-        return 'no data available for this type of option'
+        res_tab = options_chain.puts
+    else:
+        return 'No data available for this type of option'
 
+    # Filtrer les options selon le strike price souhaité
+    filtered_options = res_tab[res_tab['strike'] == K]
+    
+    if filtered_options.empty:
+        return f"No options found for strike price {K} on {closest_expiration}"
+    
+    return filtered_options
 
-    # Obtenez la chaîne d'options pour cette date d'expiration
-    options_chain = stock.option_chain(expiration_date)
-
-    return res_tab
-
-# Affichez les données des options d'achat (calls) et de vente (puts)
-print("Options Call:")
-print(options_chain.calls.head(20))
-print("\nOptions Put:")
-print(options_chain.puts.head(20))
-
+# Exemple d'utilisation
+print(get_options_data("NVDA", ['call', 130, 0.05, 0.1]))
+'''
 exit()
 #endregion
 
