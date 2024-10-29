@@ -104,7 +104,7 @@ def get_all_options(ticker, option_params):
         new_row_K = options_df.iloc[0].copy()  # Copie d'une ligne existante pour structure
         new_row_K['strike'] = K
         new_row_K['expiration'] = expiration_date.strftime('%Y-%m-%d')
-        new_row_K['impliedVolatility'] = None  # Valeur à interpoler plus tard
+        new_row_K['impliedVolatility'] = np.NaN  # Valeur à interpoler plus tard
         options_df = options_df.append(new_row_K, ignore_index=True)
 
     # Ajouter une ligne pour t si elle n'est pas dans les temps jusqu'à expiration existants
@@ -112,7 +112,7 @@ def get_all_options(ticker, option_params):
         new_row_t = options_df.iloc[0].copy()
         new_row_t['strike'] = K
         new_row_t['expiration'] = expiration_date.strftime('%Y-%m-%d')
-        #new_row_t['impliedVolatility'] = None  # Valeur à interpoler plus tard
+        new_row_t['impliedVolatility'] = 0
         options_df = options_df.append(new_row_t, ignore_index=True)
 
     options_df = options_df.sort_values(by=['strike', 'expiration'], ascending=[True, True]).reset_index(drop=True)
@@ -135,18 +135,15 @@ def create_volatility_table(options_df):
         index='strike',
         columns='expiration',
         values='impliedVolatility',
-        aggfunc='mean'  # Utiliser 'mean' au cas où il y aurait des doublons
+        #aggfunc='mean'  # Utiliser 'mean' au cas où il y aurait des doublons
     )
-
-
-    #volatility_table.replace(0.000010, None, inplace=True)
-    #print('Here', volatility_table.replace(0.000010, np.NaN, inplace=True))
+    volatility_table.replace(0, np.nan, inplace=True)
 
     # Interpolation linéaire sur les lignes (strikes)
-    volatility_table = volatility_table.interpolate(method='linear', axis=0)  # Interpoler sur les lignes
+    volatility_table = volatility_table.interpolate(method='quadratic', axis=0)  # Interpoler sur les lignes
 
     # Interpolation linéaire sur les colonnes (expirations)
-    volatility_table = volatility_table.interpolate(method='linear', axis=1)  # Interpoler sur les colonnes
+    volatility_table = volatility_table.interpolate(method='quadratic', axis=1)  # Interpoler sur les colonnes
 
     #print(volatility_table)
 
@@ -165,14 +162,22 @@ def plot_volatility_surface(volatility_table, strike, expiration_date):
 
     # Convert column names (expiration dates) to datetime
     volatility_table.columns = pd.to_datetime(volatility_table.columns)
+    print('1', volatility_table.columns)
 
     # Calculate days until expiration
     today = datetime.now()
     days_to_expiration = [(exp - today).days for exp in volatility_table.columns]
 
+    days = int(expiration_date * 365)
+    today = datetime.now()
+    expiration_date = today + timedelta(days=days)
+    expiration_date = pd.to_datetime(expiration_date).strftime('%Y-%m-%d')
+
     # Retrieve the volatility value at the user-specified point if it exists in the table
     try:
-        implied_vol = volatility_table.loc[strike, pd.to_datetime(expiration_date)]
+        print('2', expiration_date)
+        implied_vol = volatility_table.loc[strike, expiration_date]
+        print(implied_vol)
         user_point = True
     except KeyError:
         implied_vol = None
@@ -189,12 +194,14 @@ def plot_volatility_surface(volatility_table, strike, expiration_date):
 
     # Create a trace for the user-specified point in red, if it's within the surface data
     if user_point:
+        st.success("We found the point")
+        print('days', days)
         point_trace = go.Scatter3d(
             x=[strike],
-            y=[(pd.to_datetime(expiration_date) - today).days],
+            y=[days],
             z=[implied_vol],
             mode='markers',
-            marker=dict(size=5, color='red'),
+            marker=dict(size=100, color='red'),
             name='User Point'
         )
         data = [surface, point_trace]
