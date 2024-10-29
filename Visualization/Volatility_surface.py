@@ -138,16 +138,17 @@ def create_volatility_table(options_df):
         aggfunc='mean'  # Utiliser 'mean' au cas où il y aurait des doublons
     )
 
-    # Interpolation linéaire sur les colonnes (expirations)
-    volatility_table = volatility_table.interpolate(method='linear', axis=1)  # Interpoler sur les colonnes
 
     #volatility_table.replace(0.000010, None, inplace=True)
-    print('Here', volatility_table.replace(0.000010, np.NaN, inplace=True))
+    #print('Here', volatility_table.replace(0.000010, np.NaN, inplace=True))
 
     # Interpolation linéaire sur les lignes (strikes)
     volatility_table = volatility_table.interpolate(method='linear', axis=0)  # Interpoler sur les lignes
 
-    print(volatility_table)
+    # Interpolation linéaire sur les colonnes (expirations)
+    volatility_table = volatility_table.interpolate(method='linear', axis=1)  # Interpoler sur les colonnes
+
+    #print(volatility_table)
 
     #volatility_table = volatility_table.fillna(method='ffill', axis=0).fillna(method='bfill', axis=0)
     #volatility_table = volatility_table.fillna(method='ffill', axis=1).fillna(method='bfill', axis=1)
@@ -155,9 +156,9 @@ def create_volatility_table(options_df):
 
     return volatility_table
 
-res = create_volatility_table(test)
-print(res)
-exit()
+#res = create_volatility_table(test)
+#print(res)
+#exit()
 def plot_volatility_surface(volatility_table, strike, expiration_date):
     # Convert the index (strike prices) to numeric type if it's not already
     volatility_table.index = pd.to_numeric(volatility_table.index)
