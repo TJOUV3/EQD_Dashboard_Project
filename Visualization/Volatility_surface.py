@@ -86,8 +86,8 @@ def get_all_options(ticker, option_params):
     options_df = pd.concat(all_options_data, ignore_index=True)
     
     # Calculer les limites de strikes basées sur K
-    lower_limit = K * 0.70  # 70% de K
-    upper_limit = K * 1.30  # 130% de K
+    lower_limit = K * 0.85  # 70% de K
+    upper_limit = K * 1.15  # 130% de K
 
     # Filtrer les options pour ne garder que celles dont les strikes sont dans la plage de K ± 30%
     options_df = options_df[(options_df['strike'] >= lower_limit) & (options_df['strike'] <= upper_limit)]
@@ -110,10 +110,11 @@ def create_volatility_table(options_df):
     )
 
     # Interpolation linéaire sur les lignes (strikes)
-    volatility_table = volatility_table.interpolate(method='linear', axis=0)  # Interpoler sur les lignes
+    volatility_table = volatility_table.interpolate(method='quadratic', axis=0)  # Interpoler sur les lignes
 
     # Interpolation linéaire sur les colonnes (expirations)
-    volatility_table = volatility_table.interpolate(method='linear', axis=1)  # Interpoler sur les colonnes
+    volatility_table = volatility_table.interpolate(method='quadratic', axis=1)  # Interpoler sur les colonnes
+    
 
     return volatility_table
 
