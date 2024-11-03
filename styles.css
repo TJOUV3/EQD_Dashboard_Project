@@ -69,7 +69,14 @@ html, body, [class*="css"] {
     padding-bottom: 10px;
     box-shadow: -6px 8px 20px 1px #00000052;
 }
-
+.stPlotlyChart {
+    border: 1px groove #52546a;
+    border-radius: 10px;
+    padding-left: 25px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    box-shadow: -6px 8px 20px 1px #00000052;
+}
 .vol_text {
     font-size: 14px; 
     font-family: 'Space Grotesk';

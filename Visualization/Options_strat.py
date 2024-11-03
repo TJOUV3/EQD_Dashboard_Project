@@ -44,6 +44,10 @@ def payoff(call_put, St,K,Prenium,type,Maturity, buy_sell, nb_of_options):
         return 0
 
 def option_description(call_put, Strike, type_option, Maturity, buy_sell, nb_of_options):
+    if buy_sell == 'buy':
+        buy_sell = 'Long'
+    else:
+        buy_sell = 'Short'
     return str(buy_sell) + ' ' + str(nb_of_options) + ' ' + str(type_option) + ' ' + str(call_put) + ' ' +  str(Maturity) + 'Y' +  ', Strike = ' + str(Strike)
 
 def derivated_products(St, list_options):
@@ -689,7 +693,6 @@ def update_vega_value():
         1, 250,float(nvidia_price))[2]
     return round(vega_value, 2)
 
-
 # Main content area
 chart_col, data_col = st.columns([3,1])
 
@@ -842,33 +845,62 @@ with vega_col:
         # Affichage du contenu
         st.markdown(content, unsafe_allow_html=True) 
 
-with chart_col:
-    if st.session_state.plots:
-        st.markdown(f"<p class='price_details'>{st.session_state.L_descr_options}</p>", unsafe_allow_html=True)
-        
-        greeks = ['delta', 'gamma', 'theta', 'vega', 'rho', 'option_Price']
-        st.radio("Select Greek to display:", 
-                    ['payoff'] + greeks, 
-                    key='greek_radio',
-                    on_change=update_selected_greek,
-                    format_func=lambda x: x.capitalize() if x != 'option_Price' else 'Option Price',
-                    horizontal=True)
-        
-        if st.session_state.selected_greek in st.session_state.plots:
-            st.plotly_chart(st.session_state.plots[st.session_state.selected_greek], use_container_width=True)
 
-with data_col:
-    with st.container():
-        delta_value = update_delta_value()
-        tab = delta_hedging_ptf(delta_value, stock_ticker)
-        st.table(tab)
+if st.session_state.plots:
+    st.markdown(f"<p class='price_details'>{st.session_state.L_descr_options}</p>", unsafe_allow_html=True)
+    
+tab_payoff, tab_delta, tab_gamma, tab_theta, tab_vega, tab_rho, tab_option_price = st.tabs(['Payoff','Delta', 'Gamma', 'Theta', 'Vega', 'Rho', 'Option Price'])
+with tab_payoff:
+    if 'payoff' in st.session_state.plots:
+        st.plotly_chart(st.session_state.plots['payoff'], use_container_width=True,theme = None)
+with tab_delta:
+    if 'delta' in st.session_state.plots:
+        st.plotly_chart(st.session_state.plots['delta'], use_container_width=True)
 
-with chart_col:
-    if st.session_state.plots:
-        with st.expander("Raw Volatility Data"):
-            st.dataframe(volatility_table)
+with tab_gamma:
+    if 'gamma' in st.session_state.plots:
+        st.plotly_chart(st.session_state.plots['gamma'], use_container_width=True)
+
+with tab_theta:
+    if 'theta' in st.session_state.plots:
+        st.plotly_chart(st.session_state.plots['theta'], use_container_width=True)
+
+with tab_vega:
+    if 'vega' in st.session_state.plots:
+        st.plotly_chart(st.session_state.plots['vega'], use_container_width=True)
+
+with tab_rho:
+    if 'rho' in st.session_state.plots:
+        st.plotly_chart(st.session_state.plots['rho'], use_container_width=True)
+
+with tab_option_price:
+    if 'option_Price' in st.session_state.plots:
+        st.plotly_chart(st.session_state.plots['option_Price'], use_container_width=True)
+    # greeks = ['delta', 'gamma', 'theta', 'vega', 'rho', 'option_Price']
+    # st.radio("Select Greek to display:", 
+    #             ['payoff'] + greeks, 
+    #             key='greek_radio',
+    #             on_change=update_selected_greek,
+    #             format_func=lambda x: x.capitalize() if x != 'option_Price' else 'Option Price',
+    #             horizontal=True)
+    
+    # if st.session_state.selected_greek in st.session_state.plots:
+    #     st.plotly_chart(st.session_state.plots[st.session_state.selected_greek], use_container_width=True)
+
+
+
+# with data_col:
+#     with st.container():
+#         delta_value = update_delta_value()
+#         tab = delta_hedging_ptf(delta_value, stock_ticker)
+#         st.table(tab)
+
+# with chart_col:
+if st.session_state.plots:
+    with st.expander("Raw Volatility Data"):
+        st.dataframe(volatility_table)
         vol_graph
-            
+        
 
 if clear:
     st.session_state.L_options = []
