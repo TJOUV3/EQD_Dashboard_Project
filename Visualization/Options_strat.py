@@ -43,12 +43,12 @@ def payoff(call_put, St,K,Prenium,type,Maturity, buy_sell, nb_of_options):
     else:
         return 0
 
-def option_description(call_put, Strike, type_option, Maturity, buy_sell, nb_of_options):
+def option_description(call_put, Strike, type_option, Maturity, buy_sell, nb_of_options, prenium):
     if buy_sell == 'buy':
         buy_sell = 'Long'
     else:
         buy_sell = 'Short'
-    return str(buy_sell) + ' ' + str(nb_of_options) + ' ' + str(type_option) + ' ' + str(call_put) + ' ' +  str(Maturity) + 'Y' +  ', Strike = ' + str(Strike)
+    return str(buy_sell) + ' ' + str(nb_of_options) + ' ' + str(type_option) + ' ' + str(call_put) + ' ' +  str(Maturity) + 'Y' +  ', K = ' + str(Strike) + ' @ ' +str(round(prenium,2)) +'$'
 
 def derivated_products(St, list_options):
     resulting_payoff = 0
@@ -137,14 +137,16 @@ def get_all_options(ticker, option_params):
         new_row_K['strike'] = K
         new_row_K['expiration'] = expiration_date.strftime('%Y-%m-%d')
         new_row_K['impliedVolatility'] = np.NaN 
-        options_df = options_df.append(new_row_K, ignore_index=True)
+        #options_df = options_df.append(new_row_K, ignore_index=True)
+        options_df = pd.concat([options_df, pd.DataFrame([new_row_K])], ignore_index=True)
 
     if t not in unique_times:
         new_row_t = options_df.iloc[0].copy()
         new_row_t['strike'] = K
         new_row_t['expiration'] = expiration_date.strftime('%Y-%m-%d')
         new_row_t['impliedVolatility'] = 0
-        options_df = options_df.append(new_row_t, ignore_index=True)
+        #options_df = options_df.append(new_row_t, ignore_index=True)
+        options_df = pd.concat([options_df, pd.DataFrame([new_row_t])], ignore_index=True)
 
     options_df = options_df.sort_values(by=['strike', 'expiration'], ascending=[True, True]).reset_index(drop=True)
 
@@ -229,9 +231,7 @@ def plot_volatility_surface(volatility_table, strike, expiration_date):
     # Create the figure
     fig = go.Figure(data= data, layout=layout)
 
-    # Display the plot in Streamlit
-    st.title("Option Volatility Surface Visualization")
-    st.plotly_chart(fig,use_container_width=True)
+    return fig
 
 
 def create_stock_chart(data, ticker):
@@ -311,7 +311,7 @@ def calculate_option_price(option_params, St):
     
 def Simulate_data_call_put(limit_inf, limit_sup, call_put, strike, prenium, type_option,maturity,buy_sell, nb_of_options):
     result = []
-    descr = option_description(call_put, strike, type_option, maturity, buy_sell, nb_of_options)
+    descr = option_description(call_put, strike, type_option, maturity, buy_sell, nb_of_options, prenium)
     for price in range(limit_inf,limit_sup):
         result.append(payoff(call_put,price,strike,prenium,type_option,maturity,buy_sell, nb_of_options))
     return result, descr
@@ -693,9 +693,6 @@ def update_vega_value():
         1, 250,float(nvidia_price))[2]
     return round(vega_value, 2)
 
-# Main content area
-chart_col, data_col = st.columns([3,1])
-
 # Form submission logic
 if submitted:
         st.session_state.stock_data = get_historical_data(stock_ticker)
@@ -709,8 +706,7 @@ if submitted:
             volatility_table = create_volatility_table(options_data)
             expiration_date = pd.to_datetime(expiration_date).strftime('%Y-%m-%d')
             implied_vol = volatility_table.loc[strike, expiration_date]
-            print(implied_vol)
-            vol_graph = plot_volatility_surface(volatility_table, strike, maturity)
+            #vol_graph = plot_volatility_surface(volatility_table, strike, maturity)
 
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
@@ -751,7 +747,7 @@ if submitted:
         st.session_state.plots['payoff'] = plot_function(
             range(Get_parameters(stock_ticker)['lim_inf'], Get_parameters(stock_ticker)['lim_sup']),
             result_derivative_product, st.session_state.L_options, st.session_state.L_descr_options,
-            ['Payoff of the Option', 'Stock Price (St)', 'Payoff'], st.session_state.L_color
+            ['Profit of the Option', 'Stock Price (St)', 'Profit'], st.session_state.L_color
         )
 
 
@@ -850,9 +846,11 @@ if st.session_state.plots:
     st.markdown(f"<p class='price_details'>{st.session_state.L_descr_options}</p>", unsafe_allow_html=True)
     
 tab_payoff, tab_delta, tab_gamma, tab_theta, tab_vega, tab_rho, tab_option_price = st.tabs(['Payoff','Delta', 'Gamma', 'Theta', 'Vega', 'Rho', 'Option Price'])
+
 with tab_payoff:
     if 'payoff' in st.session_state.plots:
-        st.plotly_chart(st.session_state.plots['payoff'], use_container_width=True,theme = None)
+        st.plotly_chart(st.session_state.plots['payoff'], use_container_width=True)
+
 with tab_delta:
     if 'delta' in st.session_state.plots:
         st.plotly_chart(st.session_state.plots['delta'], use_container_width=True)
@@ -876,30 +874,14 @@ with tab_rho:
 with tab_option_price:
     if 'option_Price' in st.session_state.plots:
         st.plotly_chart(st.session_state.plots['option_Price'], use_container_width=True)
-    # greeks = ['delta', 'gamma', 'theta', 'vega', 'rho', 'option_Price']
-    # st.radio("Select Greek to display:", 
-    #             ['payoff'] + greeks, 
-    #             key='greek_radio',
-    #             on_change=update_selected_greek,
-    #             format_func=lambda x: x.capitalize() if x != 'option_Price' else 'Option Price',
-    #             horizontal=True)
-    
-    # if st.session_state.selected_greek in st.session_state.plots:
-    #     st.plotly_chart(st.session_state.plots[st.session_state.selected_greek], use_container_width=True)
 
-
-
-# with data_col:
-#     with st.container():
-#         delta_value = update_delta_value()
-#         tab = delta_hedging_ptf(delta_value, stock_ticker)
-#         st.table(tab)
-
-# with chart_col:
 if st.session_state.plots:
-    with st.expander("Raw Volatility Data"):
+    with st.expander("Raw Volatility Data", expanded=True):
         st.dataframe(volatility_table)
-        vol_graph
+        fig_vol = plot_volatility_surface(volatility_table, strike, maturity)
+        st.title("Option Volatility Surface Visualization")
+        st.plotly_chart(fig_vol,use_container_width=True)
+        
         
 
 if clear:
