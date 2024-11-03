@@ -60,7 +60,17 @@ html, body, [class*="css"] {
     line-height: 0.2;
     padding-top: 10px;
 }
-
+div[data-testid="stVerticalBlockBorderWrapper"]:has(
+    >div>div>div[data-testid="element-container"] 
+    .custom-frame
+  ) {
+  border: 1px groove #52546a;
+  border-radius: 10px;
+  padding-left: 25px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  box-shadow: -6px 8px 20px 1px #00000052;
+  }
 .custom-container {
     border: 1px groove #52546a;
     border-radius: 10px;

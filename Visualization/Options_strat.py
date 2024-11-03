@@ -609,6 +609,10 @@ if 'selected_greek' not in st.session_state:
     st.session_state.selected_greek = 'payoff'
 if 'plots' not in st.session_state:
     st.session_state.plots = {}
+if 'volatility_tables' not in st.session_state:
+    st.session_state.volatility_tables = []
+if 'volatility_surfaces' not in st.session_state:
+    st.session_state.volatility_surfaces = []
 
 # Title column
 with title_col:
@@ -702,11 +706,10 @@ if submitted:
         price_stock, vol_stock = get_stock_price_and_volatility(stock_ticker, period='1y')
         try:
             # Fetch options data
-            options_data = get_all_options(stock_ticker, [type_option_cp, strike, r, maturity])       
+            options_data = get_all_options(stock_ticker, [type_option_cp, strike, r, maturity])
             volatility_table = create_volatility_table(options_data)
             expiration_date = pd.to_datetime(expiration_date).strftime('%Y-%m-%d')
             implied_vol = volatility_table.loc[strike, expiration_date]
-            #vol_graph = plot_volatility_surface(volatility_table, strike, maturity)
 
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
@@ -720,10 +723,14 @@ if submitted:
             Get_parameters(stock_ticker)['lim_sup'],
             type_option_cp, strike, option_prenium, type_eu_us, maturity, type_trades, quantity
         )
+        option_id = option_description(type_option_cp, strike, type_eu_us, maturity, type_trades, quantity, option_prenium)
+        st.session_state.volatility_tables.append(volatility_table)
+        fig_vol_surface = plot_volatility_surface(volatility_table, strike, maturity)
+        st.session_state.volatility_surfaces.append(fig_vol_surface)
         st.session_state.L_options.append(result_option1)
         st.session_state.L_descr_options.append(descr_option1)
         st.session_state.L_color.append(color_wanted)
-        
+
         result_derivative_product = Simulate_data_dervative(st.session_state.L_options)
         
         # Generate all the plots
@@ -751,6 +758,7 @@ if submitted:
         )
 
 
+    # Display current cart
 with delta_col:
     with st.container():
         delta_value = update_delta_value()
@@ -841,16 +849,49 @@ with vega_col:
         # Affichage du contenu
         st.markdown(content, unsafe_allow_html=True) 
 
+with st.container(border=True):
+    st.subheader('Portfolio')
 
-if st.session_state.plots:
-    st.markdown(f"<p class='price_details'>{st.session_state.L_descr_options}</p>", unsafe_allow_html=True)
+    if ('L_descr_options' in st.session_state and 
+        'L_color' in st.session_state and 
+        st.session_state.L_descr_options and 
+        len(st.session_state.L_descr_options) == len(st.session_state.L_color)):
+        
+        for i, (opt, color) in enumerate(zip(st.session_state.L_descr_options, st.session_state.L_color)):
+            col1, col2 = st.columns([6, 1])
+            
+            with col1:
+                option_content = f"""
+                <div class="option-container" style="
+                    border: 2px solid {color};
+                    margin-bottom: 15px;
+                    padding: 15px;
+                    border-radius: 10px;
+                    box-shadow: -6px 8px 20px 1px #00000052;
+                ">
+                    <p style="margin: 0;">{opt}</p>
+                </div>
+                """       
+                st.markdown(option_content, unsafe_allow_html=True)
+            
+            with col2:
+                if st.button("Delete", key=f"del_{i}"):
+                    st.session_state.L_descr_options.pop(i)
+                    st.session_state.L_options_2.pop(i)
+                    st.session_state.L_color.pop(i)
+                    st.rerun()
+    else:
+        st.warning("No options")
+
+    st.write('<span class="custom-frame"/>', unsafe_allow_html=True)
     
 tab_payoff, tab_delta, tab_gamma, tab_theta, tab_vega, tab_rho, tab_option_price = st.tabs(['Payoff','Delta', 'Gamma', 'Theta', 'Vega', 'Rho', 'Option Price'])
 
 with tab_payoff:
     if 'payoff' in st.session_state.plots:
-        st.plotly_chart(st.session_state.plots['payoff'], use_container_width=True)
-
+            fig_payoff = st.session_state.plots['payoff']
+            fig_payoff.update_layout(height=500)
+            st.plotly_chart(st.session_state.plots['payoff'], use_container_width=True)
 with tab_delta:
     if 'delta' in st.session_state.plots:
         st.plotly_chart(st.session_state.plots['delta'], use_container_width=True)
@@ -875,14 +916,26 @@ with tab_option_price:
     if 'option_Price' in st.session_state.plots:
         st.plotly_chart(st.session_state.plots['option_Price'], use_container_width=True)
 
-if st.session_state.plots:
+if st.session_state.L_descr_options:
     with st.expander("Raw Volatility Data", expanded=True):
-        st.dataframe(volatility_table)
-        fig_vol = plot_volatility_surface(volatility_table, strike, maturity)
-        st.title("Option Volatility Surface Visualization")
-        st.plotly_chart(fig_vol,use_container_width=True)
-        
-        
+
+        # Création des onglets pour chaque description d'option
+        vol_tabs = st.tabs(st.session_state.L_descr_options)
+
+        # Affichage de chaque table et surface de volatilité dans l'onglet correspondant
+        for i, descr in enumerate(st.session_state.L_descr_options):
+            with vol_tabs[i]:
+                # Vérification que la table et la surface existent pour cette option
+                if i < len(st.session_state.volatility_tables) and i < len(st.session_state.volatility_surfaces):
+                    # Affichage de la table de volatilité
+                    st.write(f"Volatility Table for {descr}")
+                    st.dataframe(st.session_state.volatility_tables[i])
+
+                    # Affichage de la surface de volatilité
+                    st.write(f"Volatility Surface for {descr}")
+                    st.plotly_chart(st.session_state.volatility_surfaces[i], use_container_width=True)
+                else:
+                    st.warning(f"No volatility data available for {descr}")
 
 if clear:
     st.session_state.L_options = []
@@ -892,6 +945,7 @@ if clear:
     st.session_state.L_options = []
     st.session_state.L_descr_options = []
     st.session_state.L_color = []
+    st.session_state.plots = {}
     if 'stock_data' in st.session_state:
         del st.session_state.stock_data
 
