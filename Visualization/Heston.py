@@ -16,7 +16,7 @@ from scipy.optimize import minimize
 from sklearn.metrics import mean_squared_error
 from mpl_toolkits.mplot3d import Axes3D
 
-
+from Screeners.Stocks_Screener import get_sp500_tickers
 
 #endregion
 
@@ -326,3 +326,12 @@ plt.ylabel('Prix de l\'Actif')
 plt.title(f'Comparaison des Prix Observés et Simulés avec le Modèle de Heston ({ticker})')
 plt.legend()
 plt.show()
+
+
+def main():
+    sp500_tickers = get_sp500_tickers()
+
+    st.selectbox(sp500_tickers)
+
+if "__name__" == '__main__':
+    main()

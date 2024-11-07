@@ -15,6 +15,7 @@ import streamlit as st
 import plotly.graph_objs as go
 from datetime import datetime,timedelta
 
+from Screeners.Stocks_Screener import get_sp500_tickers
 #endregion
 
 #region functions payoffs, option_description, derivated_products
@@ -559,6 +560,9 @@ if "symbols_list" not in st.session_state:
 
 st.set_page_config(layout='wide', page_title='Equity Derivatives Dashboard')
 
+
+sp500_tickers = get_sp500_tickers().index.tolist()
+
 st.markdown("""
     <style>
         footer {display: none}
@@ -580,6 +584,7 @@ with st.sidebar:
     
     with st.form(key='params_form'):
         stock_ticker = st.text_input("Stock", "NVDA")
+        #st.selectbox(label="Tickers",options=sp500_tickers)
         type_trades = st.selectbox("Trade type", ['buy', 'sell'])
         quantity = st.number_input("Number of Options", value=1, step=1)
         type_option_cp = st.selectbox("Option's type", ['call', 'put', 'digital call'])

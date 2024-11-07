@@ -10,11 +10,13 @@ import streamlit.components.v1 as components
 from plotly.subplots import make_subplots
 
 #region Get Data yfinance
+@st.cache_data(ttl=3600)  # Cache the result for 1 hour
 def get_sp500_tickers():
     url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
     table = pd.read_html(url)[0]
     return table.set_index('Symbol')['Security']
 
+@st.cache_data(ttl=3600)  # Cache the result for 1 hour
 def get_stock_data(tickers, period="1mo"):
     data = yf.download(tickers, period=period)
     return data['Adj Close']
@@ -78,6 +80,7 @@ def create_stock_charts(selected_stocks):
     return fig
 #endregion
 
+
 st.title("S&P 500 Stocks Screener")
 if st.button('Refresh Data'):
     st.session_state.last_update = datetime.min
@@ -90,6 +93,7 @@ if 'last_update' not in st.session_state:
 def color_percent_change(val):
     color = 'green' if val.startswith('+') else 'red'
     return f'color: {color}'
+
 
 # Fetch company names (this is cached)
 company_names = fetch_company_names()
@@ -116,16 +120,13 @@ chart_placeholder = st.empty()
 
 # Create stock table
 stock_table = create_stock_table(st.session_state.stock_data, returns, volatility)
+stock_table['Company Name'] = company_names
 # Add a checkbox column to the dataframe 
 stock_table['Select'] = [ticker in st.session_state.selected_stocks for ticker in stock_table.index]
 
-def color_percent_change(val):
-    color = 'green' if val.startswith('+') else 'red'
-    return f'color: {color}'
-
 # Apply the styling to the DataFrame
 styled_df = stock_table.style.applymap(color_percent_change, subset=['% Change'])
-
+    
 # Create an editable dataframe with conditional formatting
 edited_df = st.data_editor(
     styled_df,
@@ -152,10 +153,14 @@ edited_df = st.data_editor(
             "Volatility",
             width="small",
         ),
+        "Company Name": st.column_config.TextColumn(
+            "Company Name",
+            width="small",
+        ),
     },
-    disabled=["Ticker", "Price", "% Change", "Volatility"],
+    disabled=["Company Name","Ticker", "Price", "% Change", "Volatility"],
     use_container_width=True,
-    column_order=[ "Ticker", "Price", "% Change", "Volatility","Select",],
+    column_order=["Company Name","Ticker", "Price", "% Change", "Volatility","Select",],
     hide_index=True,
     key="stock_table",
 )
@@ -171,3 +176,10 @@ with chart_placeholder.container():
             st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Select one or more stocks to view their charts.")
+
+if st.button("Clear selected stocks"):
+    st.session_state.selected_stocks = []
+    edited_df['Select'] = False
+
+    print(edited_df['Select'])
+    st.rerun()
