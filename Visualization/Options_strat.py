@@ -14,8 +14,8 @@ import QuantLib as ql
 import streamlit as st
 import plotly.graph_objs as go
 from datetime import datetime,timedelta
+from scipy.interpolate import griddata
 
-from Screeners.Stocks_Screener import get_sp500_tickers
 #endregion
 
 #region functions payoffs, option_description, derivated_products
@@ -154,20 +154,52 @@ def get_all_options(ticker, option_params):
     return options_df[['strike', 'expiration', 'lastPrice', 'bid', 'ask', 'impliedVolatility']]
 
 def create_volatility_table(options_df):
+    # Conversion de la colonne 'expiration' en type datetime
     options_df['expiration'] = pd.to_datetime(options_df['expiration'])
+    
+    # Création d'un tableau de volatilité avec strikes en index et expirations en colonnes
     volatility_table = options_df.pivot_table(
         index='strike',
         columns='expiration',
-        values='impliedVolatility',
-        #aggfunc='mean'  # Utiliser 'mean' au cas où il y aurait des doublons
+        values='impliedVolatility'
     )
+    
+    # Remplacer les zéros par NaN pour ne pas interférer avec l'interpolation
     volatility_table.replace(0, np.nan, inplace=True)
 
-    volatility_table = volatility_table.interpolate(method='quadratic', axis=0)
-    volatility_table = volatility_table.interpolate(method='quadratic', axis=1)
-    
+    # Extraire les indices (strikes et expirations) et les valeurs
+    strikes = volatility_table.index.values
+    expirations = volatility_table.columns.values
 
-    return volatility_table
+    # Préparer les points connus (non-NaN) pour l'interpolation
+    points = []
+    values = []
+
+    for i, strike in enumerate(strikes):
+        for j, expiration in enumerate(expirations):
+            if not np.isnan(volatility_table.iat[i, j]):  # Ignorer les NaN
+                points.append((strike, expiration))
+                values.append(volatility_table.iat[i, j])
+
+    # Vérifier si suffisamment de points sont disponibles pour l'interpolation
+    if len(points) < 3:
+        raise ValueError("Pas assez de points non-NaN pour l'interpolation.")
+    
+    # Créer une grille complète pour tous les points (strikes, expirations)
+    grid_x, grid_y = np.meshgrid(strikes, expirations, indexing='ij')
+
+    # Appliquer l'interpolation bilinéaire (avec méthode 'nearest' ou 'cubic' pour tester)
+    try:
+        interpolated_values = griddata(points, values, (grid_x, grid_y), method='linear')
+    except Exception as e:
+        #print(f"Erreur avec interpolation bilinéaire: {e}")
+        #print("Essai avec méthode 'nearest'.")
+        interpolated_values = griddata(points, values, (grid_x, grid_y), method='nearest')
+
+    # Créer un DataFrame avec les valeurs interpolées
+    interpolated_table = pd.DataFrame(interpolated_values, index=strikes, columns=expirations)
+
+    return interpolated_table
 
 def plot_volatility_surface(volatility_table, strike, expiration_date):
     volatility_table.index = pd.to_numeric(volatility_table.index)
@@ -559,9 +591,6 @@ if "symbols_list" not in st.session_state:
     st.session_state.symbols_list = None
 
 st.set_page_config(layout='wide', page_title='Equity Derivatives Dashboard')
-
-
-sp500_tickers = get_sp500_tickers().index.tolist()
 
 st.markdown("""
     <style>
