@@ -4,17 +4,22 @@ import pandas as pd
 import matplotlib.pyplot as plt
 #import openai
 import os
-#import huggingface_hub
 import io
 import base64
-#from huggingface_hub import InferenceClient
 import numpy as np
 import yfinance as yf
 import QuantLib as ql
 import streamlit as st
 import plotly.graph_objs as go
+from plotly.graph_objs import Surface
 from datetime import datetime,timedelta
 from scipy.interpolate import griddata
+
+from nelson_siegel_svensson import NelsonSiegelSvenssonCurve
+from nelson_siegel_svensson.calibrate import calibrate_nss_ols
+
+from scipy.integrate import quad
+from scipy.optimize import minimize
 
 #endregion
 
@@ -63,7 +68,7 @@ def derivated_products(St, list_options):
 
 #endregion
 
-#region Stock Prce & Option Price
+#region Stock Price, Option Price & Yield
 
 def get_stock_price_and_volatility(ticker, period='1y'):
 
@@ -87,9 +92,20 @@ def get_stock_price_and_volatility(ticker, period='1y'):
     
     # Annualize the volatility (assuming 252 trading days in a year)
     annual_volatility = daily_volatility * np.sqrt(252)
-    
-    return latest_price, annual_volatility
 
+    vol_table = data['Log Return'].rolling(window=252).std()*np.sqrt(252)
+
+    sigma = (np.log(vol_table/vol_table.shift(1)).dropna()).std()*np.sqrt(252)
+    
+    return latest_price, annual_volatility, sigma
+
+def risk_free_curve():
+    yield_maturities = np.array([1/12, 2/12, 3/12, 6/12, 1, 2, 3, 5, 7, 10, 20, 30])
+    yeilds = np.array([4.70,4.69,4.63,4.42,4.32,4.26,4.18,4.20,4.25,4.30,4.58,4.47]).astype(float)/100
+    #NSS model calibrate
+    curve_fit, status = calibrate_nss_ols(yield_maturities,yeilds)
+
+    return curve_fit
 
 def get_historical_data(ticker, period='1mo'):
     stock = yf.Ticker(ticker)
@@ -201,6 +217,65 @@ def create_volatility_table(options_df):
 
     return interpolated_table
 
+def create_price_table(options_df):
+    # Conversion de la colonne 'expiration' en type datetime
+    options_df['expiration'] = pd.to_datetime(options_df['expiration'])
+    
+    # Création d'un tableau de volatilité avec strikes en index et expirations en colonnes
+    price_table = options_df.pivot_table(
+        index='strike',
+        columns='expiration',
+        values='lastPrice'
+    )
+    
+    # Remplacer les zéros par NaN pour ne pas interférer avec l'interpolation
+    price_table.replace(0, np.nan, inplace=True)
+
+    # Extraire les indices (strikes et expirations) et les valeurs
+    strikes = price_table.index.values
+    expirations = price_table.columns.values
+
+    # Préparer les points connus (non-NaN) pour l'interpolation
+    points = []
+    values = []
+
+    for i, strike in enumerate(strikes):
+        for j, expiration in enumerate(expirations):
+            if not np.isnan(price_table.iat[i, j]):  # Ignorer les NaN
+                points.append((strike, expiration))
+                values.append(price_table.iat[i, j])
+
+    # Vérifier si suffisamment de points sont disponibles pour l'interpolation
+    if len(points) < 3:
+        raise ValueError("Pas assez de points non-NaN pour l'interpolation.")
+    
+    # Créer une grille complète pour tous les points (strikes, expirations)
+    grid_x, grid_y = np.meshgrid(strikes, expirations, indexing='ij')
+
+    # Appliquer l'interpolation bilinéaire (avec méthode 'nearest' ou 'cubic' pour tester)
+    try:
+        interpolated_values = griddata(points, values, (grid_x, grid_y), method='linear')
+    except Exception as e:
+        #print(f"Erreur avec interpolation bilinéaire: {e}")
+        #print("Essai avec méthode 'nearest'.")
+        interpolated_values = griddata(points, values, (grid_x, grid_y), method='nearest')
+
+    # Créer un DataFrame avec les valeurs interpolées
+    interpolated_table = pd.DataFrame(interpolated_values, index=strikes, columns=expirations)
+
+    return interpolated_table
+
+def table_vol_to_dataframe(volatility_table):
+    volSurfaceLong = volatility_table.melt(ignore_index=False).reset_index()
+    volSurfaceLong.columns = ['strike','maturity', 'price']
+    today = datetime.today()
+    volSurfaceLong['years_to_maturity'] = volSurfaceLong['maturity'].apply(lambda x: (x - today).days / 365)
+
+    # Calculate the risk free rate for each maturity using the fitted yield curve
+    volSurfaceLong['rate'] = volSurfaceLong['years_to_maturity'].apply(risk_free_curve())
+
+    return volSurfaceLong
+
 def plot_volatility_surface(volatility_table, strike, expiration_date):
     volatility_table.index = pd.to_numeric(volatility_table.index)
     volatility_table.columns = pd.to_datetime(volatility_table.columns)
@@ -258,7 +333,6 @@ def plot_volatility_surface(volatility_table, strike, expiration_date):
         ),
         width=900,
         height=700,
-        margin=dict(r=10, l=10, b=10, t=40)
     )
 
     # Create the figure
@@ -337,6 +411,125 @@ def calculate_option_price(option_params, St):
     price = option.NPV()
 
     return price
+
+
+#endregion
+
+#region Heston
+
+def heston_charfunc(phi, S0, v0, kappa, theta, sigma, rho, lambd, tau, r):
+
+    # constants
+    a = kappa*theta
+    b = kappa+lambd
+
+    # common terms w.r.t phi
+    rspi = rho*sigma*phi*1j
+
+    # define d parameter given phi and b
+    d = np.sqrt( (rho*sigma*phi*1j - b)**2 + (phi*1j+phi**2)*sigma**2 )
+
+    # define g parameter given phi, b and d
+    g = (b-rspi+d)/(b-rspi-d)
+
+    # calculate characteristic function by components
+    exp1 = np.exp(r*phi*1j*tau)
+    term2 = S0**(phi*1j) * ( (1-g*np.exp(d*tau))/(1-g) )**(-2*a/sigma**2)
+    exp2 = np.exp(a*tau*(b-rspi+d)/sigma**2 + v0*(b-rspi+d)*( (1-np.exp(d*tau))/(1-g*np.exp(d*tau)) )/sigma**2)
+
+    return exp1*term2*exp2
+
+def integrand(phi, S0, v0, kappa, theta, sigma, rho, lambd, tau, r, K):
+    args = (S0, v0, kappa, theta, sigma, rho, lambd, tau, r)
+    numerator = np.exp(r*tau)*heston_charfunc(phi-1j,*args) - K*heston_charfunc(phi,*args)
+    denominator = 1j*phi*K**(1j*phi)
+    return numerator/denominator
+
+def heston_price_rec(S0, K, v0, kappa, theta, sigma, rho, lambd, tau, r):
+    args = (S0, v0, kappa, theta, sigma, rho, lambd, tau, r)
+
+    P, umax, N = 0, 100, 10000
+    dphi=umax/N #dphi is width
+
+    for i in range(1,N):
+        # rectangular integration
+        phi = dphi * (2*i + 1)/2 # midpoint to calculate height
+        numerator = np.exp(r*tau)*heston_charfunc(phi-1j,*args) - K * heston_charfunc(phi,*args)
+        denominator = 1j*phi*K**(1j*phi)
+
+        P += dphi * numerator/denominator
+
+    return np.real((S0 - K*np.exp(-r*tau))/2 + P/np.pi)
+
+def heston_price(S0, K, v0, kappa, theta, sigma, rho, lambd, tau, r):
+    args = (S0, v0, kappa, theta, sigma, rho, lambd, tau, r, K)
+
+    real_integral, err = np.real(quad(integrand, 0, 100, args=args) )
+
+    return (S0 - K*np.exp(-r*tau))/2 + real_integral/np.pi
+
+def calibration_params(volSurfaceLong, latest_price, vol_histo, sigma):
+    S0 = latest_price
+    r = volSurfaceLong['rate'].to_numpy('float')
+    K = volSurfaceLong['strike'].to_numpy('float')
+    tau = volSurfaceLong['years_to_maturity'].to_numpy('float')
+    P = volSurfaceLong['price'].to_numpy('float')
+
+    
+    params = {"v0": {"x0": np.sqrt(vol_histo), "lbub": [1e-3,1]},
+          "kappa": {"x0": 3, "lbub": [1e-3,5]},
+          "theta": {"x0": 0.05, "lbub": [1e-3,0.1]},
+          "sigma": {"x0": 0.5, "lbub": [1e-2,1]},
+          "rho": {"x0": -0.8, "lbub": [-1,0]},
+          "lambd": {"x0": 0.03, "lbub": [-1,1]},
+          }
+
+    x0 = [param["x0"] for key, param in params.items()]
+    bnds = [param["lbub"] for key, param in params.items()]
+
+    return S0, r, K, tau, P, params, x0, bnds
+
+def SqErr(x, S0, P, K, tau, r, x0):
+
+    v0, kappa, theta, sigma, rho, lambd = [param for param in x]
+
+    # Decided to use rectangular integration function in the end
+    err = np.sum( (P-heston_price_rec(S0, K, v0, kappa, theta, sigma, rho, lambd, tau, r))**2 /len(P) )
+
+    # Zero penalty term - no good guesses for parameters
+    pen = np.sum( [(x_i-x0_i)**2 for x_i, x0_i in zip(x, x0)] )
+
+    return err + pen
+
+def f_minimize(S0, P, K, tau, r, x0, tol, bnds):
+    result = minimize(SqErr, x0, args=(S0, P, K, tau, r, x0), tol=1, method='SLSQP', options={'maxiter': 1000}, bounds=bnds)
+    v0, kappa, theta, sigma, rho, lambd = [param for param in result.x]
+    return v0, kappa, theta, sigma, rho, lambd
+
+def add_result(volSurfaceLong, S0, K, v0, kappa, theta, sigma, rho, lambd, tau, r):
+    heston_prices = heston_price_rec(S0, K, v0, kappa, theta, sigma, rho, lambd, tau, r)
+    volSurfaceLong['heston_price'] = heston_prices
+    return volSurfaceLong
+
+
+def plot_mesh(data_volSurfaceLong, color_wanted):
+    fig = go.Figure(data=[go.Mesh3d(x=data_volSurfaceLong.maturity, y=data_volSurfaceLong.strike, z=data_volSurfaceLong.price, color=color_wanted, opacity=0.9)])
+
+    fig.add_scatter3d(x=data_volSurfaceLong.maturity, y=data_volSurfaceLong.strike, z=data_volSurfaceLong.heston_price, mode='markers', marker=dict(size=5, color='black'))
+
+    fig.update_layout(
+        title_text='Market Prices (Mesh) vs Calibrated Heston Prices (Markers)',
+        scene = dict(xaxis_title='TIME (Years)',
+                    yaxis_title='STRIKES (Pts)',
+                    zaxis_title='INDEX OPTION PRICE (Pts)',
+                    xaxis=dict(gridcolor='rgb(255, 255, 255)', zerolinecolor='rgb(255, 255, 255)', showbackground=True),
+                    yaxis=dict(gridcolor='rgb(255, 255, 255)', zerolinecolor='rgb(255, 255, 255)', showbackground=True),
+                    zaxis=dict(gridcolor='rgb(255, 255, 255)', zerolinecolor='rgb(255, 255, 255)', showbackground=True)),
+        height=800,
+        width=800,
+    )
+
+    return fig
 
 #endregion
 
@@ -550,7 +743,7 @@ def delta_hedging_ptf(actual_delta_value, ticker):
 # Example for NVIDIA
 def Get_parameters(ticker="NVDA"):
 
-    price_stocks, volatility_stocks = get_stock_price_and_volatility(ticker)
+    price_stocks, volatility_stocks, sigma_stock = get_stock_price_and_volatility(ticker)
 
     K_Put = round(price_stocks) + 5       
     K_Call = round(price_stocks) - 5
@@ -621,6 +814,9 @@ with st.sidebar:
         strike = st.number_input("Strike", value=0.0, step=0.1)
         maturity = st.number_input("Time to Maturity (in Y)", value=0.0, step=0.1)
         r = st.number_input("Risk free rate", value=0.0, step=0.01)
+
+        tol = st.select_slider("Select a tolerance",options=[1e-2,1e-1,1])
+
         color_wanted = st.color_picker("Pick A Color", "#00f900")
         
         submitted = st.form_submit_button(label='Submit', use_container_width=True)
@@ -647,6 +843,10 @@ if 'volatility_tables' not in st.session_state:
     st.session_state.volatility_tables = []
 if 'volatility_surfaces' not in st.session_state:
     st.session_state.volatility_surfaces = []
+if 'price_tables' not in st.session_state:
+    st.session_state.price_tables = []
+if 'price_surfaces' not in st.session_state:
+    st.session_state.price_surfaces = []
 
 # Title column
 with title_col:
@@ -737,13 +937,15 @@ if submitted:
         days = int(maturity * 365)
         today = datetime.now()
         expiration_date = today + timedelta(days=days)
-        price_stock, vol_stock = get_stock_price_and_volatility(stock_ticker, period='1y')
+        price_stock, vol_stock, sigma_stock = get_stock_price_and_volatility(stock_ticker, period='1y')
         try:
             # Fetch options data
             options_data = get_all_options(stock_ticker, [type_option_cp, strike, r, maturity])
             volatility_table = create_volatility_table(options_data)
+            price_table = create_price_table(options_data)
             expiration_date = pd.to_datetime(expiration_date).strftime('%Y-%m-%d')
             implied_vol = volatility_table.loc[strike, expiration_date]
+            volSurfaceLong = table_vol_to_dataframe(price_table)
 
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
@@ -751,6 +953,11 @@ if submitted:
 
         option1_params = [type_option_cp, strike, r, maturity, implied_vol, type_trades, quantity]
         st.session_state.L_options_2.append(option1_params)
+
+        S0, r, K, tau, P, params, x0, bnds = calibration_params(volSurfaceLong, price_stock, vol_stock, sigma_stock)
+        v0, kappa, theta, sigma, rho, lambd = f_minimize(S0, P, K, tau, r, x0, tol, bnds)
+        volSurfaceLong2 = add_result(volSurfaceLong, S0, K, v0, kappa, theta, sigma, rho, lambd, tau, r)
+
         option_prenium = calculate_option_price(option1_params, price_stock)
         result_option1, descr_option1 = Simulate_data_call_put(
             Get_parameters(stock_ticker)['lim_inf'],
@@ -761,9 +968,15 @@ if submitted:
         st.session_state.volatility_tables.append(volatility_table)
         fig_vol_surface = plot_volatility_surface(volatility_table, strike, maturity)
         st.session_state.volatility_surfaces.append(fig_vol_surface)
+
+        st.session_state.price_tables.append(price_table)
+        fig_price_surface = plot_mesh(volSurfaceLong2, color_wanted)
+        st.session_state.price_surfaces.append(fig_price_surface)
+
         st.session_state.L_options.append(result_option1)
         st.session_state.L_descr_options.append(descr_option1)
         st.session_state.L_color.append(color_wanted)
+
 
         result_derivative_product = Simulate_data_dervative(st.session_state.L_options)
         
@@ -970,6 +1183,18 @@ if st.session_state.L_descr_options:
                     st.plotly_chart(st.session_state.volatility_surfaces[i], use_container_width=True)
                 else:
                     st.warning(f"No volatility data available for {descr}")
+            with vol_tabs[i]:
+                # Vérification que la table et la surface existent pour cette option
+                if i < len(st.session_state.price_tables) and i < len(st.session_state.price_surfaces):
+                    # Affichage de la table de volatilité
+                    st.write(f"Price Table for {descr}")
+                    st.dataframe(st.session_state.price_tables[i])
+
+                    # Affichage de la surface de volatilité
+                    st.write(f"Price Surface for {descr}")
+                    st.plotly_chart(st.session_state.price_surfaces[i], use_container_width=True)
+                else:
+                    st.warning(f"No price data available for {descr}")
 
 if clear:
     st.session_state.L_options = []
