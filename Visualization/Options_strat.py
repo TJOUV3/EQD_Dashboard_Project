@@ -21,6 +21,8 @@ from nelson_siegel_svensson.calibrate import calibrate_nss_ols
 from scipy.integrate import quad
 from scipy.optimize import minimize
 
+import mibian
+
 #endregion
 
 #region functions payoffs, option_description, derivated_products
@@ -501,6 +503,7 @@ def SqErr(x, S0, P, K, tau, r, x0):
 
     return err + pen
 
+@st.cache_data
 def f_minimize(S0, P, K, tau, r, x0, tol, bnds):
     result = minimize(SqErr, x0, args=(S0, P, K, tau, r, x0), tol=1, method='SLSQP', options={'maxiter': 1000}, bounds=bnds)
     v0, kappa, theta, sigma, rho, lambd = [param for param in result.x]
@@ -592,6 +595,89 @@ def plot_function(def_range, res, list_of_options, descr_options, legend, color_
 
     return fig
 
+def plot_simulation(df_simulation):
+    fig = go.Figure()
+    for col in df_simulation.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=df_simulation.index,
+                y=df_simulation[col],
+                mode='lines',
+                name=f'Sim {col}',
+                showlegend=False
+            )
+        )
+
+    # Update layout
+    fig.update_layout(
+        title="Monte Carlo Stock Price Simulations",
+        xaxis_title="Week",
+        yaxis_title="Price",
+        showlegend=False,
+    )
+
+    return fig
+
+def plot_histogram(data, title, position):
+    fig = go.Figure()
+    
+    # Add histogram
+    fig.add_trace(go.Histogram(
+        x=data,
+        histnorm='probability',
+        nbinsx=30,
+        name='Distribution'
+    ))
+    
+    # Calculate statistics
+    mean_val = data.mean()
+    p5_val = np.percentile(data, 5)
+    p95_val = np.percentile(data, 95)
+    
+    # Add vertical lines
+    fig.add_vline(x=mean_val, line_dash="dash", line_color="black", line_width=2)
+    fig.add_vline(x=p5_val, line_dash="dash", line_color="red", line_width=2)
+    fig.add_vline(x=p95_val, line_dash="dash", line_color="blue", line_width=2)
+    
+    # Update layout
+    fig.update_layout(
+        title=title,
+        xaxis_title="P&L",
+        yaxis_title="Probability",
+        showlegend=False,
+        height=400,
+        annotations=[
+            # Add statistics text
+            dict(
+                x=np.percentile(data, 0 if position == 's' else 99),
+                y=0.9,
+                xref="x",
+                yref="paper",
+                text=f'P95: {p95_val:.2f}',
+                showarrow=False,
+                font=dict(color="blue")
+            ),
+            dict(
+                x=np.percentile(data, 0 if position == 's' else 99),
+                y=0.8,
+                xref="x",
+                yref="paper",
+                text=f'Mean: {mean_val:.2f}',
+                showarrow=False
+            ),
+            dict(
+                x=np.percentile(data, 0 if position == 's' else 99),
+                y=0.7,
+                xref="x",
+                yref="paper",
+                text=f'P5: {p5_val:.2f}',
+                showarrow=False,
+                font=dict(color="red")
+            )
+        ]
+    )
+    
+    return fig
 #endregion
 
 #region Greeks
@@ -710,6 +796,67 @@ def execute_functions(list_options, greek, lim_inf, lim_sup, actual_ul_price):
 
 
 #region Hedging
+def delta(flag, S0, K, T, r, sigma):
+    """Calculate option Greeks
+        Returns: delta
+    """
+    # Convert T from years to days if necessary
+    T_days = T * 365 if T < 10 else T
+    
+    # Convert rate and sigma to percentage
+    r_percent = r * 100 if r < 1 else r
+    sigma_percent = sigma * 100
+    
+    bs = mibian.BS([S0, K, r_percent, T_days], sigma_percent)
+    
+    greeks = {
+        'delta': bs.callDelta if flag.lower() == 'c' else bs.putDelta,
+    }
+    
+    return greeks['delta']
+
+
+def calc_delta(flag, price, K, time, r, sigma, position='s'):
+    if time == 0:
+        return np.nan
+    else:
+        if position=='l':
+            return int(delta(flag, price, K, time, r, sigma)*100)
+        else:
+            return -int(delta(flag, price, K, time, r, sigma)*100)
+
+def adjust(delta, total):
+    if delta < 0:
+        return 'Buy {0}'.format(abs(delta))
+    elif delta > 0:
+        return 'Sell {0}'.format(abs(delta))
+    elif delta == 0:
+        return 'None'
+    else:
+        if total < 0:
+            return 'Sell {0}'.format(abs(total))
+        elif total > 0:
+            return 'Buy {0}'.format(abs(total))
+        else:
+            return np.nan
+
+def totalAdj(counter,time):
+    if time > 0:
+        if counter < 0:
+            return 'Long {0}'.format(abs(counter))
+        elif counter > 0:
+            return 'Short {0}'.format(abs(counter))
+        else:
+            return np.nan
+    else:
+            return np.nan
+
+def cashAdj(delta, price, time, total):
+    if time > 0:
+        return delta*price
+    else:
+        return -total*price
+
 
 def delta_hedging_ptf(actual_delta_value, ticker):
     stock_to_buy_or_sell = 0
@@ -1132,7 +1279,7 @@ with st.container(border=True):
 
     st.write('<span class="custom-frame"/>', unsafe_allow_html=True)
     
-tab_payoff, tab_delta, tab_gamma, tab_theta, tab_vega, tab_rho, tab_option_price = st.tabs(['Payoff','Delta', 'Gamma', 'Theta', 'Vega', 'Rho', 'Option Price'])
+tab_payoff, tab_delta, tab_gamma, tab_theta, tab_vega, tab_rho, tab_option_price, tab_delta_hedging = st.tabs(['Payoff','Delta', 'Gamma', 'Theta', 'Vega', 'Rho', 'Option Price','Delta Hedging'])
 
 with tab_payoff:
     if 'payoff' in st.session_state.plots:
@@ -1162,7 +1309,205 @@ with tab_rho:
 with tab_option_price:
     if 'option_Price' in st.session_state.plots:
         st.plotly_chart(st.session_state.plots['option_Price'], use_container_width=True)
+with tab_delta_hedging:
+    st.write("Delta hedging")
+    Simulate_delta_hedging = st.button("Simulate Delta Hedging")
+    M = st.slider("Number of simulation",500,2000,1000)
 
+    if Simulate_delta_hedging:
+
+
+        Dynamic_Hedging_Results = pd.DataFrame(data=[], columns=[], index=['Original Option P&L','Original Stock P&L','Adjustment P&L', \
+                                                                                    'Carry (interest) on options', 'Carry (interest) on stock', \
+                                                                                    'Interest on Adjustments'])
+        Dynamic_Hedging_Results.index.name = 'Dynamic hedging results'
+        
+        """
+            chopper le bon prix de l'action et faire un spread fantome
+        
+            call_bid,call_ask,put_bid,put_ask = 16.4,16.9,15.8,16.1
+
+            to the right value in yfinance table
+        """
+
+        call_bid,call_ask,put_bid,put_ask = 14.0,16.28,15,15.1
+        # Parameters  
+
+        N = int(round(st.session_state.L_options_2[0][3] * 52,0))
+        sigma = 0.3
+        S0 = float(nvidia_price)
+        DTE = 50
+        T = DTE/365
+        r = st.session_state.L_options_2[0][2]
+        DT = T/N
+        TTE = [DT*N-DT*i for i in range(0,N+1)]
+
+
+        # Realized Volatility
+        sigma = st.session_state.L_options_2[0][4]
+
+        # Position in Option contract
+        k = st.session_state.L_options_2[0][1]
+        K = k
+        position_map = {
+            "buy":"b",
+            "sell":"s"
+        }
+
+        position = position_map[st.session_state.L_options_2[0][5]]
+        flag_map = {
+            "call":"c",
+            "put":"p"
+        }
+        
+        flag = flag_map[st.session_state.L_options_2[0][0]]
+
+        nudt = (r - 0.5*sigma**2) * DT
+        sigmasdt = sigma*np.sqrt(DT)
+
+        no_hedge = []
+        static_hedge = []
+
+        # number of sims
+
+        St = S0
+        St_series = [np.array([St for m in range(M)])]
+        for i in range(N):
+            St = St_series[-1]
+            Stn = np.round( St * np.exp(nudt + sigmasdt*np.random.normal(0,1,M)) , 2)
+            St_series.append(Stn)
+
+        St_series = np.array(St_series)
+
+        df_simulation = pd.DataFrame(St_series, columns = [i for i in range(M)])
+        df_simulation.index.name = 'Week'
+        
+        with st.expander("Show simulations results"):
+            st.plotly_chart(plot_simulation(df_simulation), use_container_width=True)
+            st.dataframe(df_simulation)
+        df_simulation.insert(0, "Time", np.round(TTE,2))
+
+        progress_text = "Simulation in progress. Please wait."
+        progress_delta_hedging = st.progress(0, text=progress_text)
+        for sim in range(M):
+            percent_complete = (sim + 1) / M
+            
+            # Update progress bar with more detailed text
+            progress_delta_hedging.progress(
+                percent_complete, 
+                text=f"Running simulation {sim+1} of {M} ({(percent_complete*100):.0f}%)"
+            )
+            hedgeSim = df_simulation.loc[:,['Time',sim]]
+            hedgeSim.columns = ['Time', 'Price']
+
+            # hedge calcs
+            hedgeSim['delta'] = hedgeSim.apply(lambda x: calc_delta(flag, x['Price'], K, x['Time'], r, sigma, position), axis=1)
+            hedgeSim['Total Delta Position'] = (hedgeSim.delta - hedgeSim.delta.shift(1))
+            totaladjust_c = [hedgeSim['Total Delta Position'][:i].sum() for i in range(1,N+1)]
+            hedgeSim['totaladjust_c'] = [hedgeSim['Total Delta Position'][:i].sum() for i in range(1,N+2)]
+            hedgeSim['Adjustment Contracts'] = hedgeSim.apply(lambda x: adjust(x['Total Delta Position'], x['totaladjust_c']), axis=1)
+            hedgeSim['Total Adjustment'] = hedgeSim.apply(lambda x: totalAdj(x['totaladjust_c'],x['Time']), axis=1)
+            hedgeSim['totaladjust_c'] = [hedgeSim['Total Delta Position'][:i].sum() for i in range(1,N+2)]
+            hedgeSim['Adjustment Cashflow'] = hedgeSim.apply(lambda x: cashAdj(x['Total Delta Position'],x['Price'],x['Time'], x['totaladjust_c']), axis=1)
+            hedgeSim['Interest on Adjustments'] = hedgeSim.apply(lambda x: round(x['Adjustment Cashflow']*r*x['Time'],2), axis=1)
+            hedgeSim = hedgeSim.drop(columns=['totaladjust_c'])
+
+            # calculate payoffs
+            if flag == 'c':
+                if position == 's':
+                    optprice = call_bid
+                    option_pnl = 100*(optprice - np.maximum(hedgeSim.loc[11,'Price']-K,0))
+                    # delta will be negative if short
+                    stock_pnl = hedgeSim.loc[0,'delta']*(S0 - hedgeSim.loc[11,'Price'])
+                    adj_pnl = hedgeSim['Adjustment Cashflow'].sum()
+                    option_carry = 100*optprice*r*T
+                    # delta will be negative if short
+                    stock_carry = hedgeSim.loc[0,'delta']*S0*r*T
+                    int_adj_pnl = hedgeSim['Interest on Adjustments'].sum()
+                else:
+                    optprice = call_ask
+                    option_pnl = 100*(np.maximum(hedgeSim.loc[11,'Price']-K,0) - optprice)
+                    # delta will be positive if long
+                    stock_pnl = hedgeSim.loc[0,'delta']*(S0 - hedgeSim.loc[11,'Price'])
+                    adj_pnl = hedgeSim['Adjustment Cashflow'].sum()
+                    option_carry = -100*optprice*r*T
+                    # delta will be positive if long
+                    stock_carry = hedgeSim.loc[0,'delta']*S0*r*T
+                    int_adj_pnl = hedgeSim['Interest on Adjustments'].sum()
+
+            elif flag == 'p':
+                if position == 's':
+                    optprice = put_bid
+                    option_pnl = 100*(optprice - np.maximum(K-hedgeSim.loc[11,'Price'],0))
+                    # delta will be positive if short
+                    stock_pnl = hedgeSim.loc[0,'delta']*(S0 - hedgeSim.loc[11,'Price'])
+                    adj_pnl = hedgeSim['Adjustment Cashflow'].sum()
+                    option_carry = 100*optprice*r*T
+                    # delta will be positive if short
+                    stock_carry = hedgeSim.loc[0,'delta']*S0*r*T
+                    int_adj_pnl = hedgeSim['Interest on Adjustments'].sum()
+                else:
+                    optprice = put_ask
+                    option_pnl = 100*(np.maximum(K-hedgeSim.loc[11,'Price'],0) - optprice)
+                    # delta will be negative if long
+                    stock_pnl = hedgeSim.loc[0,'delta']*(S0 - hedgeSim.loc[11,'Price'])
+                    adj_pnl = hedgeSim['Adjustment Cashflow'].sum()
+                    option_carry = -100*optprice*r*T
+                    # delta will be negative if long
+                    stock_carry = hedgeSim.loc[0,'delta']*S0*r*T
+                    int_adj_pnl = hedgeSim['Interest on Adjustments'].sum()
+
+            data=[option_pnl,stock_pnl,adj_pnl,option_carry,stock_carry,int_adj_pnl]
+
+            #add to dataframe
+            Dynamic_sim = pd.DataFrame(data=data, columns=[sim], index=['Original Option P&L','Original Stock P&L','Adjustment P&L', \
+                                                                                    'Carry (interest) on options', 'Carry (interest) on stock', \
+                                                                                    'Interest on Adjustments'])
+            Dynamic_Hedging_Results[sim] = Dynamic_sim[sim]
+            no_hedge.append(option_pnl+option_carry)
+            static_hedge.append(option_pnl+option_carry+stock_pnl+stock_carry)
+
+        progress_delta_hedging.empty()
+        st.success(f"Simulation completed! {M} iterations processed.")
+        Dynamic_Hedging_Results = pd.concat([
+            Dynamic_Hedging_Results, 
+            pd.DataFrame(Dynamic_Hedging_Results.sum(axis=0)).T.rename(index={0: 'TOTAL CASHFLOW'})
+        ])            
+        st.dataframe(Dynamic_Hedging_Results)
+
+        col_dynamic,col_static,col_no_hedging = st.columns([1,1,1])
+        with col_dynamic:
+            x = Dynamic_Hedging_Results.loc['TOTAL CASHFLOW',]
+            fig1 = plot_histogram(x, 'Dynamic Delta Hedging', position)
+            st.plotly_chart(fig1, use_container_width=True)
+            st.markdown("**Dynamic Hedging**")
+            dynamic_x = Dynamic_Hedging_Results.loc['TOTAL CASHFLOW',]
+            st.write(f"Mean: {dynamic_x.mean():.2f}")
+            st.write(f"P5: {np.percentile(dynamic_x, 5):.2f}")
+            st.write(f"P95: {np.percentile(dynamic_x, 95):.2f}")
+
+        # Static Hedging Plot
+        with col_static:
+            x = np.array(static_hedge)
+            fig2 = plot_histogram(x, 'Static Delta Hedging', position)
+            st.plotly_chart(fig2, use_container_width=True)
+            st.markdown("**Static Hedging**")
+            static_x = np.array(static_hedge)
+            st.write(f"Mean: {static_x.mean():.2f}")
+            st.write(f"P5: {np.percentile(static_x, 5):.2f}")
+            st.write(f"P95: {np.percentile(static_x, 95):.2f}")
+        # No Hedging Plot
+        with col_no_hedging:
+            x = np.array(no_hedge)
+            fig3 = plot_histogram(x, 'No Delta Hedging', position)
+            st.plotly_chart(fig3, use_container_width=True)
+            st.markdown("**No Hedging**")
+            no_hedge_x = np.array(no_hedge)
+            st.write(f"Mean: {no_hedge_x.mean():.2f}")
+            st.write(f"P5: {np.percentile(no_hedge_x, 5):.2f}")
+            st.write(f"P95: {np.percentile(no_hedge_x, 95):.2f}")
+
+    
 if st.session_state.L_descr_options:
     with st.expander("Raw Volatility Data", expanded=True):
 
