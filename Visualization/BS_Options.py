@@ -307,7 +307,7 @@ def generate_greeks_table(S0, option_type, risk_free_rate):
     delta_table = []
     gamma_table = []
     vega_table = []
-    
+
     for T in maturities:
         for K in strikes:
             option_data = BlackScholes(S0, K, risk_free_rate, T, option_type,1)
@@ -340,8 +340,12 @@ def structured_product(S0, options, stocks):
 
     spot_prices = np.linspace(0.2 * S0, 1.8 * S0, min(200, int(1.8 * S0) - int(0.2 * S0) + 1)).astype(int)
     spot_prices = np.unique(spot_prices)
-
+    progress_bar_structured_product = st.progress(0)
+    i=0
     for S in spot_prices:
+        progress = int((i + 1) / len(spot_prices) * 100)
+        progress_bar_structured_product.progress(progress)
+        i+=1
         total_payoff = 0
         total_price = 0
         total_delta = 0
@@ -682,13 +686,11 @@ def find_optimal_combination(gamma_table, vega_table, GAMMA_WANTED, VEGA_WANTED)
     # Convert "N/A" to None for easier checks
     gamma_target = None if GAMMA_WANTED == "N/A" else GAMMA_WANTED
     vega_target = None if VEGA_WANTED == "N/A" else VEGA_WANTED
-    print(1)
     # Creating a combined dictionary with (strike, maturity) as the key and (gamma, vega) as the value
     combined_dict = {
         (entry["strike"], entry["maturity"]): (entry["gamma"], next((v["vega"] for v in vega_table if v["strike"] == entry["strike"] and v["maturity"] == entry["maturity"]), None))
         for entry in gamma_table
     }
-    print(2)
     # Extract all unique (K, T) pairs
     option_pairs = list(combined_dict.keys())
 
@@ -928,8 +930,6 @@ with st.sidebar:
         st.session_state.strike = st.number_input("Strike", value=0.0, step=0.1)
         st.session_state.maturity = st.number_input("Time to Maturity (in Y)", value=0.0, step=0.1)
         st.session_state.r = st.number_input("Risk free rate", value=0.0, step=0.01)
-        st.session_state.tol = st.select_slider("Select a tolerance",options=[1e-2,1e-1,1])
-        st.session_state.color_wanted = st.color_picker("Pick A Color", "#00f900")
         
         submitted = st.form_submit_button(label='Submit', use_container_width=True)
         clear = st.form_submit_button(label='🗑️', use_container_width=True)
