@@ -489,7 +489,7 @@ def plot_greeks(results, options, S0, stocks):
             option_values = []  # Store computed values for each spot price
             if opt['weight'] < 0:
                 pos = "Short"
-            else :
+            else:
                 pos = "Long"
             for S in spot_prices:
                 bs_results = BlackScholes(S, opt['strike'], opt['r'], opt['T'], opt['type'], opt['weight'])
