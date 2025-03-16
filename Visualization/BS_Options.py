@@ -36,6 +36,7 @@ def get_stock_price_and_volatility(ticker, period='1y'):
     
     return first_price, annual_volatility, mu, latest_price, sigma, rho
 
+@st.cache_data
 def get_all_options(ticker, option_params):
     stock = yf.Ticker(ticker)
     option_type = option_params[0]
@@ -119,6 +120,7 @@ def construct_volatility_table(options_df):
     volatility_table = options_df.pivot(index='strike', columns='expiration', values='impliedVolatility')
     return volatility_table
 
+@st.cache_data
 def fit_volatility_surface(volatility_table, spot_price, risk_free_rate):
     filled_vol_table = volatility_table.copy()
     for expiry in volatility_table.columns:
@@ -340,12 +342,8 @@ def structured_product(S0, options, stocks):
 
     spot_prices = np.linspace(0.2 * S0, 1.8 * S0, min(200, int(1.8 * S0) - int(0.2 * S0) + 1)).astype(int)
     spot_prices = np.unique(spot_prices)
-    progress_bar_structured_product = st.progress(0)
-    i=0
     for S in spot_prices:
-        progress = int((i + 1) / len(spot_prices) * 100)
-        progress_bar_structured_product.progress(progress)
-        i+=1
+
         total_payoff = 0
         total_price = 0
         total_delta = 0
@@ -434,6 +432,11 @@ def plot_greeks(results, options, S0, stocks):
         total_stock_results = {"payoff": 0, "price": 0, "delta": 0, "gamma": 0, "theta": 0, "vega": 0}
         
         for stock in stocks:
+            if stock['weight'] != 0:
+                if stock['weight'] < 0:
+                    pos = "Short"
+                else:
+                    pos = "Long"
             stock_res = Stock(S0, S, stock['weight'])
             for greek in stock_values.keys():
                 total_stock_results[greek] += stock_res[greek]
@@ -502,7 +505,7 @@ def plot_greeks(results, options, S0, stocks):
             fig.add_trace(
                 go.Scatter(
                     x=spot_prices,
-                    y=option_values,
+                    y=[min(option_values),max(option_values)],
                     mode="lines",
                     name=f"{pos} {abs(opt['weight'])} {opt['type']} {opt['strike']} {round(opt['T'],2)}Y",
                     line=dict(color="gray", width=1.2, dash="dot"),
@@ -515,6 +518,7 @@ def plot_greeks(results, options, S0, stocks):
             fig.add_trace(
                 go.Scatter(
                     x=[opt['strike'], opt['strike']],
+                    y=[min(option_values),max(option_values)],
                     mode="lines",
                     line=dict(color="gray", width=1, dash="dash"),
                     showlegend=False
